@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trip Planner</title>
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__head">
+        <h1 class="brand">🗺️ Trip Planner</h1>
+        <div class="flex gap">
+          <button class="btn btn--primary" id="new-trip-btn" style="flex:1">+ New Trip</button>
+          <button class="btn" id="import-btn" title="Import trip-data.json">⬆ Import</button>
+        </div>
+        <input type="search" id="trip-search" class="input" placeholder="Search trips…" />
+        <input type="file" id="import-file" accept=".json,application/json" hidden />
+      </div>
+      <nav class="sidebar__list" id="trip-list" aria-label="Trips"></nav>
+      <div class="sidebar__foot">
+        <span id="storage-status" class="muted">Loading…</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- Mobile-only bar; the sidebar becomes an off-canvas drawer on small screens. -->
+      <div class="mobile-bar">
+        <button class="btn" id="menu-btn" aria-label="Open trips menu" aria-expanded="false">☰ Trips</button>
+        <span class="brand">🗺️ Trip Planner</span>
+      </div>
+      <nav class="tabs" id="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="itinerary">Itinerary</button>
+        <button class="tab" role="tab" data-tab="checklists">Checklists</button>
+        <button class="tab" role="tab" data-tab="lodging">Lodging</button>
+        <button class="tab" role="tab" data-tab="bookings">Bookings</button>
+        <button class="tab" role="tab" data-tab="places">Places</button>
+        <button class="tab" role="tab" data-tab="charging" hidden>Charging</button>
+        <button class="tab" role="tab" data-tab="budget">Budget</button>
+        <button class="tab" role="tab" data-tab="ai">AI Planner</button>
+        <button class="tab" role="tab" data-tab="settings">Settings</button>
+      </nav>
+
+      <section class="tab-panel" id="panel-itinerary"></section>
+      <section class="tab-panel" id="panel-checklists" hidden></section>
+      <section class="tab-panel" id="panel-lodging" hidden></section>
+      <section class="tab-panel" id="panel-bookings" hidden></section>
+      <section class="tab-panel" id="panel-places" hidden></section>
+      <section class="tab-panel" id="panel-charging" hidden></section>
+      <section class="tab-panel" id="panel-budget" hidden></section>
+      <section class="tab-panel" id="panel-ai" hidden></section>
+      <section class="tab-panel" id="panel-settings" hidden></section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <!-- Click-away backdrop for the mobile sidebar drawer -->
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+
+  <div class="modal-host" id="modal-host" hidden></div>
+
+  <!-- Boot watchdog: if the ES module fails to load/run, surface a visible message
+       instead of leaving the page looking "disabled". Cleared by main.js on success. -->
+  <script>
+    window.__tpBootFailed = setTimeout(function () {
+      var el = document.getElementById('storage-status');
+      if (el) el.textContent = '⚠️ App failed to start. Open the browser console for errors (often a module/CORS issue).';
+    }, 4000);
+  </script>
+
+  <script type="module" src="app/main.js"></script>
+</body>
+</html>
