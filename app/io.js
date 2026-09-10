@@ -55,7 +55,15 @@ export function mapImportToTrip(obj) {
   const estimates = (obj.budgetEstimates || []).map((e) => ({ id: uid(), ...clone(e) }));
   const budget = rollupBudget(estimates);
 
-  const destinations = (obj.locations || []).map((l) => l.name).filter(Boolean).map((name) => ({ name }));
+  const expenses = (obj.expenses || []).map((e) => ({ id: uid(), ...clone(e) }));
+
+  const destinations = (Array.isArray(t.destinations) && t.destinations.length
+    ? t.destinations.map((d) => (typeof d === 'string' ? { name: d } : { name: d.name }))
+    : (obj.locations || []).map((l) => l.name).filter(Boolean).map((name) => ({ name })));
+
+  const travelers = (Array.isArray(t.travelers) && t.travelers.length
+    ? t.travelers.map((x) => (typeof x === 'string' ? { name: x, type: 'adult' } : { name: x.name || '', type: x.type || 'adult' }))
+    : [{ name: '', type: 'adult' }]);
 
   const trip = {
     id: uid(),
@@ -64,10 +72,10 @@ export function mapImportToTrip(obj) {
     vehicle: t.vehicle ? clone(t.vehicle) : null,
     destinations: destinations.length ? destinations : (start ? [{ name: '' }] : []),
     startDate: start, endDate: end,
-    travelers: [{ name: '', type: 'adult' }],
-    currency: 'USD',
+    travelers,
+    currency: t.currency || 'USD',
     budget,
-    expenses: [],
+    expenses,
     days,
     budgetEstimates: estimates,
     checklists: checklistsToTyped(obj.checklists),
@@ -99,6 +107,18 @@ export function buildExportObject(trip) {
   };
   if (n.subtitle) out.trip.subtitle = n.subtitle;
   if (n.vehicle) out.trip.vehicle = clone(n.vehicle);
+  if (n.currency && n.currency !== 'USD') out.trip.currency = n.currency;
+  // Only emit destinations when the trip wasn't imported, or the source file itself had
+  // trip.destinations — for legacy files destinations are derived from locations[].
+  const rawTrip = n.importedRaw && n.importedRaw.trip ? n.importedRaw.trip : null;
+  if ((!n.importedRaw || Array.isArray(rawTrip.destinations)) && Array.isArray(n.destinations) && n.destinations.some((d) => d.name)) {
+    out.trip.destinations = n.destinations.map((d) => d.name).filter(Boolean);
+  }
+  if (Array.isArray(n.travelers) && n.travelers.some((t) => t.name)) {
+    out.trip.travelers = n.travelers
+      .filter((t) => t.name)
+      .map((t) => (t.type && t.type !== 'adult' ? { name: t.name, type: t.type } : { name: t.name }));
+  }
 
   for (const k of COLLECTION_KEYS) {
     // If the original import had no ids on this collection, strip our synthetic ids
@@ -120,6 +140,13 @@ export function buildExportObject(trip) {
     if (optional) o.optional = optional;
     return o;
   });
+  out.expenses = (n.expenses || []).map((e) => ({
+    date: e.date,
+    category: e.category || 'General',
+    amount: Number(e.amount) || 0,
+    label: e.label || '',
+    ...(e.dayId != null ? { dayId: e.dayId } : {}),
+  }));
 
   // days: overlay native edits onto the imported day structure (preserve rich fields)
   const srcDays = (n.importedRaw && Array.isArray(n.importedRaw.days)) ? n.importedRaw.days : [];
@@ -131,6 +158,14 @@ export function buildExportObject(trip) {
       o.time = it.timeRaw || it.time || isrc.time;
       o.activity = it.title;
       if (it.notes != null) o.desc = it.notes;
+      if (it.cost != null && it.cost !== isrc.cost) o.cost = it.cost;
+      else if (it.cost == null && isrc.cost != null) delete o.cost; // cleared in-app
+      if (it.location) o.location = it.location;
+      else if (!it.location && isrc.location != null) delete o.location;
+      if (it.durationMin != null) o.durationMin = it.durationMin;
+      else if (it.durationMin == null && isrc.durationMin != null) delete o.durationMin;
+      if (it.confirmation) o.confirmation = it.confirmation;
+      else if (!it.confirmation && isrc.confirmation != null) delete o.confirmation;
       return o;
     });
     return {
@@ -169,6 +204,7 @@ export function normalizeTrip(trip) {
   if (!Array.isArray(trip.keyTips)) trip.keyTips = [];
   if (!Array.isArray(trip.days)) trip.days = [];
   if (!trip.budgetEstimates) trip.budgetEstimates = [];
+  if (!Array.isArray(trip.expenses)) trip.expenses = [];
   if (!trip.budget) trip.budget = rollupBudget(trip.budgetEstimates);
   return trip;
 }
