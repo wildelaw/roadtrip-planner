@@ -11,6 +11,12 @@
 // or Playwright would be a development dependency for `fetch` and `WebSocket` (PATTERN.md §5.11
 // permits development dependencies, but it does not ask for ones that earn nothing).
 //
+// THE RUNTIME IS PART OF THE REQUIREMENT, and it is checked below rather than assumed. This file
+// needs a global `WebSocket` (Node 22+; `fetch` needs only 18), and a CI that pinned Node 20 made
+// every browser-driven test fail at `new WebSocket(...)` with the message "WebSocket is not defined".
+// Nine tests, none of which named the runtime, the browser, or the artifact — the failure was correct
+// and unreadable. `runtimeProblem` turns that into one sentence with the version in it.
+//
 // WHAT IT ASSERTS BY ITSELF. Every visit fails if the page raised an exception or logged an error,
 // because in these files a console error is never incidental: the artifact is one file with no
 // network access at boot, so an error in it is a defect the user would meet on their machine. A test
@@ -94,6 +100,22 @@ function reason() {
   return null;
 }
 
+// A missing global is NOT a skip. A machine with no browser reports skipped with a reason (above),
+// because the browser is a development tool the suite is designed to do without; the runtime is not —
+// a suite that silently skipped its browser half in CI would leave `REQ-102` (the artifact boots from
+// `file://` in CI, at least in Chrome) unverified while the log stayed green, which is the exact
+// outcome the workflow's own comment about skipped cross-checks warns against. So this throws.
+var NEEDED_RUNTIME = 'Node 22+ (a global `WebSocket`)';
+
+function runtimeProblem() {
+  var missing = typeof WebSocket === 'undefined' ? 'WebSocket'
+    : typeof fetch === 'undefined' ? 'fetch'
+    : null;
+  if (!missing) return null;
+  return 'this runtime has no global `' + missing + '` — the browser driver needs ' + NEEDED_RUNTIME +
+    ', and this is Node ' + process.version;
+}
+
 // A browser that cannot save a file in place. `showSaveFilePicker` is absent from the headless shell
 // and from every headless Chrome, so `TP.environment.canSaveInPlace` is false wherever these tests
 // run and the export path takes its other branch (REQ-510, REQ-607). Recorded here so a test that
@@ -151,6 +173,8 @@ async function visit(options) {
   var port = 9411 + Math.floor(Math.random() * 400);
 
   if (!CHROME) throw new Error('browser: ' + reason());
+  var runtime = runtimeProblem();
+  if (runtime) throw new Error('browser: ' + runtime);
 
   var profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tp-browser-'));
   var chrome = childProcess.spawn(CHROME, [
