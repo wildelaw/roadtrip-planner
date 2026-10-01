@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trip-planner.invalid/schemas/trip-data-1.0.0.schema.json",
+  "title": "trip-data.json",
+  "description": "The first-party interchange format (ADR-0014). A deliberately OPEN schema: every object accepts properties it does not name, because unmodelled wire fields are preserved as passthrough bags rather than rejected (REQ-204, REQ-207). What this schema enforces is TYPES on the fields the app does interpret — a string where a list belongs is the malformed case it exists to catch, and no more than that.",
+  "type": "object",
+  "$comment": "Detection accepts a root with `trip` OR a root with `days` (06-interchange.md §2), so the schema says the same thing rather than something stricter: an app whose validator rejects a file its own detector accepts has two answers to one question.",
+  "anyOf": [
+    { "properties": { "trip": {} }, "required": ["trip"] },
+    { "properties": { "days": {} }, "required": ["days"] }
+  ],
+  "properties": {
+    "trip": { "$ref": "#/$defs/trip" },
+    "days": { "type": "array", "items": { "$ref": "#/$defs/day" } },
+    "keyTips": { "type": "array", "items": { "type": "string" } },
+    "checklists": {
+      "description": "The wire shape is the incumbent {category: string[]} map (06-interchange.md §3.3). An array of {category, items} entries is also accepted, because the reader tolerates it and a file that imports is not malformed for being the older shape.",
+      "anyOf": [
+        { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+        { "type": "array", "items": { "$ref": "#/$defs/checklist" } }
+      ]
+    },
+    "lodging": { "type": "array", "items": { "$ref": "#/$defs/lodging" } },
+    "reservations": { "type": "array", "items": { "$ref": "#/$defs/reservation" } },
+    "noReservationNeeded": { "type": "array", "items": { "$ref": "#/$defs/noReservationNeeded" } },
+    "preTripActions": { "type": "array", "items": { "$ref": "#/$defs/preTripAction" } },
+    "bucketList": { "type": "array", "items": { "$ref": "#/$defs/bucketItem" } },
+    "chargingNetworks": { "type": "array", "items": { "$ref": "#/$defs/chargingNetwork" } },
+    "minSocThresholds": { "type": "array", "items": { "$ref": "#/$defs/minSocThreshold" } },
+    "locations": { "type": "array", "items": { "$ref": "#/$defs/location" } },
+    "contacts": { "type": "array", "items": { "$ref": "#/$defs/contact" } },
+    "criticalAlerts": { "type": "array", "items": { "$ref": "#/$defs/criticalAlert" } },
+    "budgetEstimates": { "type": "array", "items": { "$ref": "#/$defs/budgetEstimate" } },
+    "expenses": { "type": "array", "items": { "$ref": "#/$defs/expense" } }
+  },
+  "$defs": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "text": { "type": "string" },
+    "nullableString": { "type": ["string", "null"] },
+    "stringOrNumber": { "type": ["string", "number"] },
+    "bag": { "type": "object" },
+    "x": {
+      "description": "The reserved carrier (03-data-model.md). Bags by format, plus any member literally named x.",
+      "type": "object"
+    },
+    "trip": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/text" },
+        "subtitle": { "$ref": "#/$defs/text" },
+        "currency": { "$ref": "#/$defs/text" },
+        "startDate": { "$ref": "#/$defs/nullableString" },
+        "endDate": { "$ref": "#/$defs/nullableString" },
+        "destinations": { "type": "array", "items": { "$ref": "#/$defs/destination" } },
+        "travelers": { "type": "array", "items": { "$ref": "#/$defs/traveler" } },
+        "vehicle": { "$ref": "#/$defs/vehicle" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "destination": {
+      "description": "The incumbent shape is a bare name; an object appears only when the file itself supplied an id or the entity carries a bag.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "name": { "$ref": "#/$defs/text" },
+            "x": { "$ref": "#/$defs/x" }
+          }
+        }
+      ]
+    },
+    "traveler": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "name": { "$ref": "#/$defs/text" },
+            "type": { "type": "string" },
+            "x": { "$ref": "#/$defs/x" }
+          }
+        }
+      ]
+    },
+    "vehicle": {
+      "type": "object",
+      "properties": {
+        "model": { "$ref": "#/$defs/text" },
+        "batteryKWh": { "type": "number" },
+        "efficiencyMilesPerKWh": { "type": "number" },
+        "fullRangeMiles": { "type": "number" },
+        "usableRangeMiles": { "type": "number" },
+        "chargingConvention": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "day": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/nullableString" },
+        "title": { "$ref": "#/$defs/text" },
+        "stay": { "$ref": "#/$defs/text" },
+        "drive": { "$ref": "#/$defs/text" },
+        "chargeStops": { "$ref": "#/$defs/text" },
+        "nacs": { "$ref": "#/$defs/text" },
+        "summary": { "$ref": "#/$defs/text" },
+        "dining": { "type": "array", "items": { "type": "string" } },
+        "tips": { "type": "array", "items": { "type": "string" } },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "item": {
+      "description": "`activity`/`desc` are the wire spellings of the model's title/notes; both spellings are accepted (06-interchange.md §3.2).",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "type": "string" },
+        "title": { "$ref": "#/$defs/text" },
+        "activity": { "$ref": "#/$defs/text" },
+        "time": { "$ref": "#/$defs/nullableString" },
+        "timeRaw": { "$ref": "#/$defs/text" },
+        "location": { "$ref": "#/$defs/text" },
+        "cost": { "$ref": "#/$defs/stringOrNumber" },
+        "currency": { "$ref": "#/$defs/text" },
+        "durationMin": { "type": "number" },
+        "confirmation": { "$ref": "#/$defs/text" },
+        "notes": { "$ref": "#/$defs/text" },
+        "desc": { "$ref": "#/$defs/text" },
+        "flags": { "type": "object" },
+        "charge": { "type": "boolean" },
+        "overnight": { "type": "boolean" },
+        "tour": { "type": "boolean" },
+        "warn": { "type": "boolean" },
+        "minSoc": { "type": "number" },
+        "minSocCritical": { "type": "boolean" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "checklist": {
+      "description": "The wire shape is {category, items: string[]}; the ids and done flags the model holds have nowhere to go (REQ-511, disclosed).",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "category": { "$ref": "#/$defs/text" },
+        "items": { "type": "array", "items": { "type": "string" } },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "lodging": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "location": { "$ref": "#/$defs/text" },
+        "checkIn": { "$ref": "#/$defs/text" }, "checkOut": { "$ref": "#/$defs/text" },
+        "area": { "$ref": "#/$defs/text" }, "notes": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "reservation": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "what": { "$ref": "#/$defs/text" },
+        "when": { "$ref": "#/$defs/text" }, "duration": { "$ref": "#/$defs/text" },
+        "cost": { "$ref": "#/$defs/stringOrNumber" }, "howToBook": { "$ref": "#/$defs/text" },
+        "bookBy": { "$ref": "#/$defs/text" }, "priority": { "$ref": "#/$defs/text" },
+        "done": { "type": "boolean" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "noReservationNeeded": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "what": { "$ref": "#/$defs/text" },
+        "notes": { "$ref": "#/$defs/text" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "preTripAction": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "text": { "$ref": "#/$defs/text" },
+        "category": { "$ref": "#/$defs/text" }, "priority": { "$ref": "#/$defs/text" },
+        "done": { "type": "boolean" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "bucketItem": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "name": { "$ref": "#/$defs/text" },
+        "date": { "$ref": "#/$defs/text" }, "dateLabel": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "chargingNetwork": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "name": { "$ref": "#/$defs/text" },
+        "location": { "$ref": "#/$defs/text" }, "network": { "$ref": "#/$defs/text" },
+        "nacsAdapter": { "type": "boolean" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "minSocThreshold": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "day": { "$ref": "#/$defs/text" },
+        "leg": { "$ref": "#/$defs/text" }, "minSoc": { "type": "number" },
+        "reason": { "$ref": "#/$defs/text" }, "severity": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "location": {
+      "description": "`lodging` is a single line; `charging` and `dining` are lists of names; `activities` is a list of objects rather than strings — this is the incumbent shape, and src/ui/places.js is its authority.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "name": { "$ref": "#/$defs/text" },
+        "icon": { "$ref": "#/$defs/text" }, "summary": { "$ref": "#/$defs/text" },
+        "lodging": { "$ref": "#/$defs/text" },
+        "charging": { "type": "array", "items": { "type": "string" } },
+        "dining": { "type": "array", "items": { "type": "string" } },
+        "activities": { "type": "array", "items": { "$ref": "#/$defs/activity" } },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "activity": {
+      "description": "A location's activity. `name` is what the editor requires; the other two are written only when the line had them.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/text" },
+        "type": { "$ref": "#/$defs/text" },
+        "desc": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "what": { "$ref": "#/$defs/text" },
+        "how": { "$ref": "#/$defs/text" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "criticalAlert": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "severity": { "$ref": "#/$defs/text" },
+        "title": { "$ref": "#/$defs/text" }, "text": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "budgetEstimate": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "category": { "$ref": "#/$defs/text" },
+        "item": { "$ref": "#/$defs/text" }, "cost": { "$ref": "#/$defs/stringOrNumber" },
+        "optional": { "type": "boolean" }, "x": { "$ref": "#/$defs/x" }
+      }
+    },
+    "expense": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "date": { "$ref": "#/$defs/text" },
+        "category": { "$ref": "#/$defs/text" }, "amount": { "$ref": "#/$defs/stringOrNumber" },
+        "label": { "$ref": "#/$defs/text" }, "dayId": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
+      }
+    }
+  }
+}

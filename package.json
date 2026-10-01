@@ -1,0 +1,14 @@
+{
+  "name": "tripplanner-artifact",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Build and test tooling for dist/trip-planner.html. The artifact has NO dependencies: `node build.js` needs nothing installed, and nothing here is ever bundled into it (PATTERN.md §5.11).",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/run.js"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1"
+  },
+  "comment": "`ajv` is the reference implementation the hand-written JSON Schema subset is cross-checked against (REQ-806, ADR-0008). It is a DEV dependency on purpose and stays one: REQ-807 forbids a runtime validator dependency, because the artifact has to validate offline and a second policy origin inside a file whose premise is that it has one is exactly what ADR-0008 rejected. The cross-check in test/schema-crosscheck.test.js declares its own reason and skips when this is absent, so a bare checkout still runs the whole suite."
+}

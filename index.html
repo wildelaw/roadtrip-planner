@@ -1,46 +1,119 @@
 <!doctype html>
+<!--
+  The shell template (specs/02-architecture.md §1, §4).
+
+  This file is NOT the application. It is the fixed skeleton the build fills in: `node build.js`
+  reads it, inlines the stylesheet and the concatenated program, mints the initial container, and
+  writes dist/trip-planner.html. Opening this file on its own shows an unbuilt template — the program
+  is a placeholder here.
+
+  The order of what follows is load-bearing, and each rule has a failure named beside it:
+
+    1. The content policy comes first, before every script it governs (REQ-105).
+    2. Nothing here refers to anything outside the file — no stylesheet link, no script src, no
+       font, no image (ADR-0002). The file works from `file://` with no server and no network.
+    3. The shell markup is static (REQ-114): every dynamic value is rendered into a named region
+       by the program, never baked into the markup here.
+    4. The data block is inert JSON — `application/json`, never executable (REQ-104).
+    5. Exactly one script element, classic and inline. No `type="module"`, no `src` (REQ-103):
+       under `file://` the page has an opaque origin and module loading is CORS-blocked.
+
+  There are no inline `on*=` handlers and no `style="..."` attributes anywhere below (REQ-106).
+  A hash-pinned `style-src` blocks inline style attributes silently, so a style rule lives in the
+  stylesheet and dynamic values are set through the CSSOM — see src/ui/render.js.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trip Planner</title>
-  <link rel="stylesheet" href="styles/main.css" />
+
+  <!-- 1. Policy first: it must precede every script it governs (REQ-105). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-{{policyHash}}'; style-src 'sha256-{{styleHash}}'; img-src data:; connect-src {{aiEndpoints}}; form-action 'none'; base-uri 'none'; frame-ancestors 'none';" />
+
+  <title>Trip Planner — {{tripTitle}}</title>
+  <meta name="app-version" content="{{appVersion}}" />
+  <meta name="app-hash" content="sha256-{{appHash}}" />
+
+  <!-- 2. The stylesheet, inlined. styles/main.css stays the authored source (REQ-610, REQ-113). -->
+  <style>{{styles}}</style>
 </head>
 <body>
+  <!-- build:authoring-only -->
+  <!--
+    Not part of the artifact — the build removes this region before it writes one (build.js,
+    "Authoring-only regions"), and fails if the removal does not happen.
+
+    A static server hands this file out at `/` (README, "Run it"), so the likeliest way to arrive
+    here is to serve the folder and open the root. What you get then is this template, and it is
+    entirely silent about it: the policy above pins a hash of the real program, the placeholder
+    below does not hash to it, and the browser refuses to run it. So the page is inert on purpose,
+    and says nothing. This notice is the part that says something.
+  -->
+  <div id="unbuilt-notice">
+    <h1>This is the unbuilt shell template</h1>
+    <p>You are looking at <code>index.html</code> — the skeleton that <code>node build.js</code>
+        fills in, not the application. The program on this page is a placeholder, so the content
+        policy blocks it and no script runs.</p>
+    <p>Build it, then open <code>dist/trip-planner.html</code>:</p>
+    <pre>node build.js</pre>
+    <p>Serving this folder? The same server hands this file out at <code>/</code>, and the
+        application at <code>/dist/trip-planner.html</code>.</p>
+  </div>
+  <!-- /build:authoring-only -->
+
+  <!-- 3. Shell markup: static. -->
   <div id="app" class="app">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar__head">
         <h1 class="brand">🗺️ Trip Planner</h1>
         <div class="flex gap">
-          <button class="btn btn--primary" id="new-trip-btn" style="flex:1">+ New Trip</button>
-          <button class="btn" id="import-btn" title="Import trip-data.json">⬆ Import</button>
+          <button class="btn btn--primary flex-1" id="new-trip-btn">+ New Trip</button>
+          <button class="btn" id="import-btn" title="Open a planner document, trip-data.json, or a calendar file">⬆ Import</button>
         </div>
-        <input type="search" id="trip-search" class="input" placeholder="Search trips…" />
-        <input type="file" id="import-file" accept=".json,application/json" hidden />
+        <input type="search" id="trip-search" class="input" placeholder="Search documents…" />
+        <input type="file" id="import-file" accept=".html,.htm,.json,.ics,text/html,application/json,text/calendar" hidden />
       </div>
-      <nav class="sidebar__list" id="trip-list" aria-label="Trips"></nav>
+      <nav class="sidebar__list" id="trip-list" aria-label="Documents"></nav>
       <div class="sidebar__foot">
-        <span id="storage-status" class="muted">Loading…</span>
+        <span id="storage-status" class="muted">Starting…</span>
       </div>
     </aside>
 
     <main class="main">
       <!-- Mobile-only bar; the sidebar becomes an off-canvas drawer on small screens. -->
       <div class="mobile-bar">
-        <button class="btn" id="menu-btn" aria-label="Open trips menu" aria-expanded="false">☰ Trips</button>
+        <button class="btn" id="menu-btn" aria-label="Open documents menu" aria-expanded="false">☰ Documents</button>
         <span class="brand">🗺️ Trip Planner</span>
       </div>
+
       <nav class="tabs" id="tabs" role="tablist">
-        <button class="tab" role="tab" data-tab="itinerary">Itinerary</button>
-        <button class="tab" role="tab" data-tab="checklists">Checklists</button>
-        <button class="tab" role="tab" data-tab="lodging">Lodging</button>
-        <button class="tab" role="tab" data-tab="bookings">Bookings</button>
-        <button class="tab" role="tab" data-tab="places">Places</button>
-        <button class="tab" role="tab" data-tab="charging" hidden>Charging</button>
-        <button class="tab" role="tab" data-tab="budget">Budget</button>
-        <button class="tab" role="tab" data-tab="ai">AI Planner</button>
-        <button class="tab" role="tab" data-tab="settings">Settings</button>
+        <button class="tab" role="tab" data-tab="itinerary" aria-selected="true">Itinerary</button>
+        <button class="tab" role="tab" data-tab="checklists" aria-selected="false">Checklists</button>
+        <button class="tab" role="tab" data-tab="lodging" aria-selected="false">Lodging</button>
+        <button class="tab" role="tab" data-tab="bookings" aria-selected="false">Bookings</button>
+        <button class="tab" role="tab" data-tab="places" aria-selected="false">Places</button>
+        <button class="tab" role="tab" data-tab="charging" aria-selected="false" hidden>Charging</button>
+        <button class="tab" role="tab" data-tab="budget" aria-selected="false">Budget</button>
+        <!-- Shipped hidden as well as filtered by the shell: under `file://` the tab is not
+             offered at all, and the markup says so before any script runs (REQ-603, REQ-604). -->
+        <button class="tab" role="tab" data-tab="ai" aria-selected="false" hidden>AI Planner</button>
+        <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
       </nav>
+
+      <!-- Why the AI tab is absent, where a user would look for it (REQ-605). Filled by the shell. -->
+      <div id="mode-note" hidden></div>
+      <!-- What this browser can and cannot keep. Filled by the shell. -->
+      <div id="persistence-note" hidden></div>
+
+      <div class="toolbar" id="toolbar">
+        <button class="btn btn--sm" id="undo-btn" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+        <button class="btn btn--sm" id="redo-btn" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+        <button class="btn btn--sm" id="history-btn" title="Commits, revert, compaction">History</button>
+        <span class="flex gap ml-auto">
+          <span id="save-status" class="subtle" role="status" aria-live="polite"></span>
+          <button class="btn btn--sm btn--primary" id="export-btn">Export</button>
+        </span>
+      </div>
 
       <section class="tab-panel" id="panel-itinerary"></section>
       <section class="tab-panel" id="panel-checklists" hidden></section>
@@ -51,25 +124,21 @@
       <section class="tab-panel" id="panel-budget" hidden></section>
       <section class="tab-panel" id="panel-ai" hidden></section>
       <section class="tab-panel" id="panel-settings" hidden></section>
+      <section class="tab-panel" id="panel-history" hidden></section>
     </main>
   </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <!-- Click-away backdrop for the mobile sidebar drawer -->
+  <!-- Click-away backdrop for the mobile sidebar drawer. -->
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 
   <div class="modal-host" id="modal-host" hidden></div>
 
-  <!-- Boot watchdog: if the ES module fails to load/run, surface a visible message
-       instead of leaving the page looking "disabled". Cleared by main.js on success. -->
-  <script>
-    window.__tpBootFailed = setTimeout(function () {
-      var el = document.getElementById('storage-status');
-      if (el) el.textContent = '⚠️ App failed to start. Open the browser console for errors (often a module/CORS issue).';
-    }, 4000);
-  </script>
+  <!-- 4. The container: payload + history + build metadata. Inert data (REQ-104, REQ-209). -->
+  <script type="application/json" id="app-data">{{escapedJSON}}</script>
 
-  <script type="module" src="app/main.js"></script>
+  <!-- 5. The application: classic, inline, hash-pinned. One script element (REQ-103). -->
+  <script id="app-script">{{concatenatedJS}}</script>
 </body>
 </html>

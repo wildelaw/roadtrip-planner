@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trip-planner.invalid/schemas/container-1.0.0.schema.json",
+  "title": "The PVD container envelope",
+  "description": "The data block of a planner document (PATTERN.md, specs/04-versioning.md). This is the schema URI the container names in its own `$schema` field (src/core/container.js). It states the envelope the codec writes and reads; the PAYLOAD below it is the trip model's business, not the envelope's.",
+  "type": "object",
+  "required": ["format", "payload", "history"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "payload": { "$ref": "#/$defs/payload" },
+    "history": { "$ref": "#/$defs/history" },
+    "build": { "$ref": "#/$defs/build" }
+  },
+  "$defs": {
+    "payload": {
+      "description": "One trip per document (REQ-201). The trip's own shape is the model's, not the envelope's; this asserts only that a trip is there, because `payloadTrip` and every view read one.",
+      "type": "object",
+      "required": ["trip"],
+      "properties": { "trip": { "type": "object" } }
+    },
+    "history": {
+      "type": "object",
+      "required": ["commits"],
+      "properties": {
+        "keyframeInterval": { "type": "integer", "minimum": 1 },
+        "head": { "type": ["string", "null"] },
+        "commits": { "type": "array", "items": { "$ref": "#/$defs/commit" } }
+      }
+    },
+    "commit": {
+      "description": "Exactly one of `snapshot` or `delta` is stored (REQ-308). Neither is a hash input (REQ-302), which is what makes re-keyframing and compaction free.",
+      "type": "object",
+      "required": ["id", "docId", "parents", "author", "timestamp", "message", "payloadHash"],
+      "properties": {
+        "id": { "type": "string" },
+        "docId": { "type": "string" },
+        "parents": { "type": "array", "items": { "type": "string" } },
+        "author": {
+          "type": "object",
+          "required": ["name", "email"],
+          "properties": { "name": { "type": "string" }, "email": { "type": "string" } }
+        },
+        "timestamp": { "type": "string" },
+        "message": { "type": "string" },
+        "payloadHash": { "type": "string" },
+        "snapshot": { "type": "object" },
+        "delta": { "type": "array", "items": { "$ref": "#/$defs/operation" } }
+      }
+    },
+    "operation": {
+      "description": "One patch operation (specs/04-versioning.md §4). `path` is segments; a segment is a name or an index. The forbidden segments are rejected by the walker before a path is ever walked (REQ-706) — that check is code, not schema, because a schema cannot say \"not this string\" and still be readable.",
+      "type": "object",
+      "required": ["op", "path"],
+      "properties": {
+        "op": { "enum": ["add", "remove", "replace"] },
+        "path": { "type": "array", "items": { "type": ["string", "integer"] } }
+      }
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "appVersion": { "type": "string" },
+        "appHash": { "type": "string" },
+        "generatedAt": { "type": "string" }
+      }
+    }
+  }
+}
