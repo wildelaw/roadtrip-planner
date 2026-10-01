@@ -144,7 +144,9 @@ TP.ui.reconcile = (function () {
       var storage = readOnly
         ? TP.storage.create('null')
         : TP.store.storage();
-      TP.store.init(result.container, storage, { readOnly: readOnly });
+      // A file opened over a running page, so the swap also re-arms the store's interactivity:
+      // `init` alone would leave Export disabled from here on (see `TP.store.openDocument`).
+      TP.store.openDocument(result.container, storage, { readOnly: readOnly });
       if (!readOnly && storage && storage.available()) {
         TP.registry.register(storage, {
           docId: TP.store.docIdOf(result.container),

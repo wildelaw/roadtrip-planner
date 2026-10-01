@@ -566,6 +566,48 @@ module.exports = {
     },
 
     {
+      // `init` resets the store, and the reset includes the interactivity flag — deliberately, because
+      // boot inits BEFORE reconcile runs and the UI must not be live until it has (REQ-612). That
+      // leaves a trap for every swap that happens later, over a page that has been running for a
+      // while: `init` puts the flag back to false and only the boot sequence ever set it true, so a
+      // document opened from the sidebar left the app permanently non-interactive and its Export
+      // button greyed out. `openDocument` is the seam that closes it, and this is its contract.
+      name: 'a document adopted after boot is interactive, and init alone is not (REQ-612)',
+      run: function () {
+        var TP = storeRealm();
+        var f = fixture(TP, 1);
+        var storage = TP.storageMemory.create();
+
+        TP.store.init(f.container, storage);
+        h.equal(TP.store.isInteractive(), false,
+          'init must leave the store non-interactive: boot calls it before reconcile (REQ-612)');
+        TP.store.setInteractive(true);
+        h.equal(TP.store.isInteractive(), true, 'and boot can arm it when the sequence finishes');
+
+        // The swap, exactly as the sidebar's row and New Trip do it.
+        TP.store.openDocument(f.container, storage);
+        h.equal(TP.store.isInteractive(), true,
+          'a document adopted over a running page must leave the app interactive');
+
+        // It is `init` PLUS the transition, not a different reset: everything init clears, it clears.
+        TP.store.edit('An edit that must not survive the swap', function (t) { t.title = 'changed'; });
+        h.equal(TP.store.isDirty(), true, 'the edit landed, so there is something to reset');
+        TP.store.openDocument(f.container, storage);
+        h.equal(TP.store.isDirty(), false, 'openDocument leaves the working copy clean, as init does');
+        h.equal(TP.store.canUndo(), false, 'undo does not reach back across the swap');
+        h.equal(TP.store.trip().title, TP.container.payloadTrip(f.container).title,
+          'the adopted document’s own payload is the working copy');
+
+        // Read-only is not a reason to withhold interactivity. Export is the way out of a read-only
+        // document — boot says so in as many words — so it has to stay available there.
+        TP.store.openDocument(f.container, storage, { readOnly: true });
+        h.equal(TP.store.isReadOnly(), true, 'the read-only flag is carried through');
+        h.equal(TP.store.isInteractive(), true,
+          'a read-only document is still interactive: Export is how its owner gets an editable copy');
+      },
+    },
+
+    {
       name: 'every resource guard fails with an explanation naming the limit and the value',
       run: function () {
         var TP = h.pure({}).TP;

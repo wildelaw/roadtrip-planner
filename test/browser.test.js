@@ -686,6 +686,177 @@ module.exports = {
     },
 
     {
+      // Opening a second document used to leave the app half-armed. `TP.store.init` resets the
+      // store's interactivity — boot needs that, because it inits the store BEFORE reconcile runs
+      // (REQ-612) — and every swap after boot called `init` and never finished the transition. The
+      // flag stayed false for the rest of the session, and the one control gated on it, Export
+      // (`src/ui/shell.js`), was greyed out from the first commit after a switch, with no way back
+      // short of reloading the page. The row that opened a trip and the New Trip dialog are two
+      // different call sites (`TP.ui.tripList.openLocal` / `addAndOpen`), so both are driven here.
+      name: 'a document opened over a running page leaves Export working (REQ-405, REQ-612)',
+      run: async function () {
+        var server = await browser.serve();
+        var page = await browser.visit({ origin: server.origin });
+        try {
+          var out = await page.evaluate(async function () {
+            var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+            function exportDisabled() {
+              var b = document.getElementById('export-btn');
+              return b ? b.disabled : null;
+            }
+            function modal() { return document.querySelector('.modal'); }
+            function modalTitle() {
+              var box = modal();
+              var head = box && box.querySelector('h3');
+              return head ? head.textContent : null;
+            }
+            function modalText() {
+              var box = modal();
+              return box ? box.textContent.replace(/\s+/g, ' ') : '';
+            }
+            function modalButton(re) {
+              return Array.prototype.filter.call(document.querySelectorAll('.modal button'), function (b) {
+                return re.test(b.textContent.trim());
+              })[0];
+            }
+            function rows() {
+              return Array.prototype.map.call(document.querySelectorAll('#trip-list .trip-item'), function (row) {
+                return {
+                  title: (row.querySelector('.trip-item__title') || {}).textContent,
+                  // A row whose document has no copy in this browser says so rather than opening.
+                  held: !row.classList.contains('trip-item--absent'),
+                  active: row.classList.contains('trip-item--active'),
+                };
+              });
+            }
+            function openRow(title) {
+              var row = Array.prototype.filter.call(document.querySelectorAll('#trip-list .trip-item'), function (r) {
+                return (r.querySelector('.trip-item__title') || {}).textContent === title;
+              })[0];
+              if (!row) return false;
+              row.click();
+              return true;
+            }
+
+            // A trip made the way a person makes one: New Trip on the toolbar, Create in the dialog,
+            // then a typed name — which is a real edit, so the autosave commits it and the document
+            // is written to this browser. That last step is what gives the sidebar a row that can be
+            // reopened at all.
+            async function makeTrip(name) {
+              document.getElementById('new-trip-btn').click();
+              await sleep(150);
+              var create = modalButton(/^create$/i);
+              if (!create) return { error: 'the New trip dialog offered no Create: ' + modalTitle() };
+              create.click();
+              await sleep(250);
+
+              var field = Array.prototype.filter.call(
+                document.querySelectorAll('#panel-itinerary label.field'),
+                function (l) {
+                  var span = l.querySelector('.field-label');
+                  return span && span.textContent === 'Trip name';
+                })[0];
+              var input = field && field.querySelector('input');
+              if (!input) return { error: 'the itinerary has no Trip name field to edit' };
+              input.value = name;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              await sleep(1500);   // the autosave commits 900 ms after the last edit
+              return { error: null };
+            }
+
+            var report = { boot: { exportDisabled: exportDisabled(), rows: rows() } };
+
+            report.newTrip = await makeTrip('Alpha');
+            report.afterNewTrip = { exportDisabled: exportDisabled(), rows: rows() };
+
+            report.secondTrip = await makeTrip('Beta');
+            report.afterSecondTrip = { exportDisabled: exportDisabled(), rows: rows() };
+
+            // The reported case: open a DIFFERENT document from the sidebar.
+            report.openedRow = openRow('Alpha');
+            await sleep(400);
+            report.afterSwitch = {
+              exportDisabled: exportDisabled(),
+              tripTitle: TP.store.trip().title,
+              dialog: modalTitle(),
+              isInteractive: TP.store.isInteractive(),
+              rows: rows(),
+            };
+
+            // And the button has to do what it says, not merely look enabled.
+            document.getElementById('export-btn').click();
+            await sleep(120);
+            report.exportDialog = {
+              title: modalTitle(),
+              offers: Array.prototype.map.call(document.querySelectorAll('.modal button'), function (b) { return b.textContent.trim(); }),
+            };
+
+            var exportAction = modalButton(/^export$/i);
+            if (exportAction) exportAction.click();
+            await sleep(200);
+            report.saveDialog = {
+              title: modalTitle(),
+              checks: Array.prototype.map.call(document.querySelectorAll('.modal li'), function (li) { return li.textContent.trim(); }),
+              text: modalText(),
+            };
+
+            var save = modalButton(/choose where to save/i);
+            if (save) save.click();
+            await sleep(300);
+            var toasts = document.getElementById('toasts');
+            report.toast = toasts ? toasts.textContent.replace(/\s+/g, ' ') : '';
+            return report;
+          });
+
+          // The state before anything is switched, so a failure below is about the switch.
+          h.equal(out.boot.exportDisabled, false, 'Export was disabled on a freshly booted document');
+          h.deepEqual(out.boot.rows.map(function (r) { return r.active; }), [true],
+            'the boot document is not the row the sidebar marks as current');
+
+          h.ok(!out.newTrip.error, 'making a trip failed: ' + out.newTrip.error);
+          h.ok(!out.secondTrip.error, 'making the second trip failed: ' + out.secondTrip.error);
+
+          // Both documents are in the sidebar, held locally, and neither is "not kept in this browser" —
+          // which is what makes the row below a document that can actually be reopened (REQ-405).
+          var titles = out.afterSecondTrip.rows.map(function (r) { return r.title; });
+          h.ok(titles.indexOf('Alpha') !== -1 && titles.indexOf('Beta') !== -1,
+            'the sidebar does not list both documents: ' + titles.join(', '));
+          var alpha = out.afterSecondTrip.rows.filter(function (r) { return r.title === 'Alpha'; })[0];
+          h.equal(alpha.held, true, 'the first document has no copy in this browser, so its row cannot reopen it');
+
+          // THE REGRESSION. New Trip and the sidebar's row both call `init` on a running store; the
+          // export button is gated on the flag that leaves behind.
+          h.equal(out.afterNewTrip.exportDisabled, false,
+            'Export was disabled after New Trip, and stayed that way for the rest of the session');
+          h.equal(out.afterSecondTrip.exportDisabled, false,
+            'Export was disabled after a second New Trip');
+
+          h.equal(out.openedRow, true, 'the sidebar had no row for the first document to open');
+          h.equal(out.afterSwitch.dialog, null,
+            'opening the row raised a dialog instead of opening the document: ' + out.afterSwitch.dialog);
+          h.equal(out.afterSwitch.tripTitle, 'Alpha', 'the row did not open the document it names');
+          h.equal(out.afterSwitch.isInteractive, true, 'the store came back from a switch not interactive');
+          h.equal(out.afterSwitch.exportDisabled, false,
+            'Export was disabled after opening a document from the sidebar — the defect this test is for');
+
+          // Enabled is not the same as working. The dialog, the checks and the file all have to follow.
+          h.equal(out.exportDialog.title, 'Export', 'the Export button did not open the export dialog');
+          h.equal(out.saveDialog.title, 'Save Alpha.html',
+            'the export did not reach the save step for the opened document: ' + out.saveDialog.title);
+          h.equal(out.saveDialog.checks.length, 5,
+            'the assembled document was not put through its five checks: ' + out.saveDialog.checks.join(' / '));
+          h.ok(out.saveDialog.checks.indexOf('The data block carries exactly this document') !== -1,
+            'the checks listed are not the export’s own: ' + out.saveDialog.checks.join(' / '));
+          h.ok(/Saved Alpha\.html/.test(out.toast), 'the export did not report a saved file: ' + out.toast);
+        } finally {
+          page.close();
+          await server.close();
+        }
+      },
+    },
+
+    {
       name: 'the browser driver itself refuses to pass a page that threw, and says where (REQ-102)',
       run: async function () {
         // The driver is what every other test in this file and in `escaping.test.js` is built on, so

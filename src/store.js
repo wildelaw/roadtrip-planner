@@ -68,6 +68,22 @@ TP.store = (function () {
     state.persistenceNote = opts.persistenceNote || describeStorage(storage);
   }
 
+  // Adopt a document AFTER boot, completing the transition `init` deliberately leaves open.
+  //
+  // `init` resets `interactive` to false because boot calls it fourth and reconcile runs fifth
+  // (REQ-612): the UI must not be live over a document whose own history has not been checked yet,
+  // and boot re-arms the flag itself once the sequence finishes or the divergence is settled.
+  //
+  // Every later swap — the registry's row, New Trip, opening a file — has already done its own
+  // integrity check synchronously by the time it reaches the store, so there is no window left to
+  // protect: the store holds a document it can vouch for the moment `init` returns. Leaving the
+  // flag where `init` put it greyed every control gated on it for the rest of the session, which
+  // is exactly what the Export button did after opening a second trip from the sidebar.
+  function openDocument(container, storage, options) {
+    init(container, storage, options);
+    state.interactive = true;
+  }
+
   function describeStorage(storage) {
     if (!storage) return null;
     if (storage.downgraded) return storage.describe();
@@ -437,6 +453,7 @@ TP.store = (function () {
     onChange: onChange,
     emit: emit,
     init: init,
+    openDocument: openDocument,
     container: container,
     holdCommits: holdCommits,
     releaseCommits: releaseCommits,
