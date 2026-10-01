@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en"><script src="moz-extension://3c80320f-a6de-4e07-ae02-f0e98357bd60/content/fido2-page-script.js"></script><head>
+<html lang="en"><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- 1. Policy first: it must precede every script it governs (REQ-105). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-3ysFIXYVU/8gb1mJeL8rUSNKmsF+bttkXnMtSPcL4vM='; style-src 'sha256-i0iBML5rby1eGUC4yr+xylutfN2RfJoNd337v5gGsdk='; img-src data:; connect-src https://ollama.com http://localhost:11434 https://esm.run https://cdn.jsdelivr.net https://huggingface.co https://raw.githubusercontent.com; form-action 'none'; base-uri 'none'; frame-ancestors 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-JsWGJlpmk5ug2FXki6K2ZCVVVtkCnMeZSEgZ0SyBTH8='; style-src 'sha256-i0iBML5rby1eGUC4yr+xylutfN2RfJoNd337v5gGsdk='; img-src data:; connect-src https://ollama.com http://localhost:11434 https://esm.run https://cdn.jsdelivr.net https://huggingface.co https://raw.githubusercontent.com; form-action 'none'; base-uri 'none'; frame-ancestors 'none';">
 
   <title>Trip Planner — New trip</title>
   <meta name="app-version" content="0.2.0">
-  <meta name="app-hash" content="sha256-3ysFIXYVU/8gb1mJeL8rUSNKmsF+bttkXnMtSPcL4vM=">
+  <meta name="app-hash" content="sha256-JsWGJlpmk5ug2FXki6K2ZCVVVtkCnMeZSEgZ0SyBTH8=">
 
   <!-- 2. The stylesheet, inlined. styles/main.css stays the authored source (REQ-610, REQ-113). -->
   <style>:root {
@@ -5297,8 +5297,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   },
   "build": {
     "appVersion": "0.2.0",
-    "appHash": "sha256-3ysFIXYVU/8gb1mJeL8rUSNKmsF+bttkXnMtSPcL4vM=",
-    "generatedAt": "2026-10-01T03:31:02.575Z"
+    "appHash": "sha256-JsWGJlpmk5ug2FXki6K2ZCVVVtkCnMeZSEgZ0SyBTH8=",
+    "generatedAt": "2026-10-01T03:57:15.738Z"
   }
 }</script>
 
@@ -12398,6 +12398,22 @@ TP.store = (function () {
     state.persistenceNote = opts.persistenceNote || describeStorage(storage);
   }
 
+  // Adopt a document AFTER boot, completing the transition `init` deliberately leaves open.
+  //
+  // `init` resets `interactive` to false because boot calls it fourth and reconcile runs fifth
+  // (REQ-612): the UI must not be live over a document whose own history has not been checked yet,
+  // and boot re-arms the flag itself once the sequence finishes or the divergence is settled.
+  //
+  // Every later swap — the registry's row, New Trip, opening a file — has already done its own
+  // integrity check synchronously by the time it reaches the store, so there is no window left to
+  // protect: the store holds a document it can vouch for the moment `init` returns. Leaving the
+  // flag where `init` put it greyed every control gated on it for the rest of the session, which
+  // is exactly what the Export button did after opening a second trip from the sidebar.
+  function openDocument(container, storage, options) {
+    init(container, storage, options);
+    state.interactive = true;
+  }
+
   function describeStorage(storage) {
     if (!storage) return null;
     if (storage.downgraded) return storage.describe();
@@ -12767,6 +12783,7 @@ TP.store = (function () {
     onChange: onChange,
     emit: emit,
     init: init,
+    openDocument: openDocument,
     container: container,
     holdCommits: holdCommits,
     releaseCommits: releaseCommits,
@@ -13677,7 +13694,9 @@ TP.ui.tripList = (function () {
 
     var payload = TP.history.headPayload(local);
     var container = TP.container.create(payload, TP.store.buildInfo(), local);
-    TP.store.init(container, storage);
+    // `openDocument`, not `init`: this swap happens after boot, so it also marks the store
+    // interactive again — otherwise Export stays disabled for the rest of the session.
+    TP.store.openDocument(container, storage);
     TP.registry.touch(storage, docId);
     TP.ui.shell.reflectMode();
     TP.ui.shell.renderAll();
@@ -13701,7 +13720,7 @@ TP.ui.tripList = (function () {
       message: 'New trip',
     });
     if (res && res.history) container.history = res.history;
-    TP.store.init(container, TP.store.storage());
+    TP.store.openDocument(container, TP.store.storage());
     TP.store.commit('New trip');
     render();
   }
@@ -16679,7 +16698,9 @@ TP.ui.reconcile = (function () {
       var storage = readOnly
         ? TP.storage.create('null')
         : TP.store.storage();
-      TP.store.init(result.container, storage, { readOnly: readOnly });
+      // A file opened over a running page, so the swap also re-arms the store's interactivity:
+      // `init` alone would leave Export disabled from here on (see `TP.store.openDocument`).
+      TP.store.openDocument(result.container, storage, { readOnly: readOnly });
       if (!readOnly && storage && storage.available()) {
         TP.registry.register(storage, {
           docId: TP.store.docIdOf(result.container),
