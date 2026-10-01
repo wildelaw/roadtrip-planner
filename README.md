@@ -162,6 +162,11 @@ node test/run.js     # the test suite
 **The artifact needs nothing.** `node build.js` uses no dependencies and nothing in `package.json` is
 ever bundled into it — that is a requirement, not a convenience (`REQ-807`, `PATTERN.md` §5.11).
 
+**The suite wants Node 22 or newer**, for `node test/run.js` only. The browser-driven tests drive
+headless Chrome over the DevTools Protocol using Node's global `WebSocket` and `fetch` rather than a
+dependency (`test/browser.js`); `WebSocket` is not a global before 22, and on an older runtime those
+tests fail rather than skip, naming the version. The artifact itself has no such floor.
+
 **The output lands in `dist/`, which is git-ignored.** That is deliberate: the artifact is a *build
 output*, and a repository that carries its own build ships a second copy of the app — the copy people
 actually open — so a commit that edited `src/` without rebuilding would publish a file that disagrees

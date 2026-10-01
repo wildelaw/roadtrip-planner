@@ -42,10 +42,14 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      # 24, not 20: the browser driver (test/browser.js) speaks DevTools Protocol over Node's *global*
+      # `WebSocket`, which is not a global before 22. On 20 the whole browser-driven half of the suite
+      # fails at one line with "WebSocket is not defined" — nine tests whose names say nothing about
+      # the cause. The driver's own header records the same requirement; this is the other half of it.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       # `npm ci` (not `install`) so the cross-check runs against the locked reference implementation
       # rather than whatever resolves today.
