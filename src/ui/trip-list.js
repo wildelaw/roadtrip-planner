@@ -113,7 +113,9 @@ TP.ui.tripList = (function () {
 
     var payload = TP.history.headPayload(local);
     var container = TP.container.create(payload, TP.store.buildInfo(), local);
-    TP.store.init(container, storage);
+    // `openDocument`, not `init`: this swap happens after boot, so it also marks the store
+    // interactive again — otherwise Export stays disabled for the rest of the session.
+    TP.store.openDocument(container, storage);
     TP.registry.touch(storage, docId);
     TP.ui.shell.reflectMode();
     TP.ui.shell.renderAll();
@@ -137,7 +139,7 @@ TP.ui.tripList = (function () {
       message: 'New trip',
     });
     if (res && res.history) container.history = res.history;
-    TP.store.init(container, TP.store.storage());
+    TP.store.openDocument(container, TP.store.storage());
     TP.store.commit('New trip');
     render();
   }

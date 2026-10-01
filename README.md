@@ -25,7 +25,9 @@ the link serves.
 ## Run it
 
 Open **<https://wildelaw.github.io/roadtrip-planner/>**, or build the file and open
-`dist/trip-planner.html`. Double-clicking it from your file manager is the intended path.
+`dist/trip-planner.html`. Double-clicking it from your file manager is the intended path. For a
+document that already has a trip in it, open the example in this repository — see
+[An example document](#an-example-document).
 
 `file://` is a first-class mode, not a degraded one: the itinerary, budget, bookings, checklists,
 history, import and export all work exactly as they do over the web. Two things differ, and the app says
@@ -92,6 +94,17 @@ The `.ics` export is lossy and says so **before** it writes the file, naming wha
 carry: budget, expenses, checklists, lodging, bookings, contacts, charging plan, alerts, and the trip's
 history. The dialog's last line points at the file that *is* complete. The wording is generated from the
 same ledger the mapper is written against, so the disclosure and the code cannot drift apart.
+
+### An example document
+
+[`West-Cost-Road-Trip.html`](West-Cost-Road-Trip.html) in this repository is a real exported
+document — a 15-day trip with two commits of history — so there is something to open without
+planning a trip first. Double-click it, or open a planner and **Import** it; either way you get the
+trip, its history, and the program that edits them.
+
+It is a *document*, not a build output, and the difference is the whole point of the design: it
+carries the program as it stood when it was exported, so it needs nothing else to run. It is
+therefore not rebuilt by `node build.js`, and the Pages site does not publish it.
 
 ## AI planning (served mode)
 
@@ -230,6 +243,7 @@ decisions/               # the ADRs, including where the build deviates from the
 PATTERN.md               # the Portable Versioned Document pattern
 docs/                    # the pattern walk-through
 app/                     # the RETIRED v1 application, kept for reference (specs/06 §8, 08 §10)
+West-Cost-Road-Trip.html # an example EXPORTED document — the trip, its history, and the app
 ```
 
 `PATTERN.md` and `specs/` are the specification; `decisions/` records the choices made while
