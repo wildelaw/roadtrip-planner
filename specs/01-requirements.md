@@ -249,7 +249,7 @@ prerequisite for everything else and is the largest single workstream.
 | Phase | Work | Requirements | Done when |
 |---|---|---|---|
 | **0** | **Render seam.** Replace every `innerHTML` site in `app/ui/` with element construction; convert `renderMarkdown` to build nodes. Pure refactor, no behaviour change. | `REQ-701`–`REQ-703`, `REQ-611` | The UI is visually and behaviourally identical, and a static grep over the sources finds no `innerHTML`. |
-| **1** | **Fragment build.** Drop ES-module syntax; attach fragments to one namespace; write `build.js`; emit `trip-planner.html` with CSS and JS inlined and a classic script. | `REQ-103`, `REQ-107`–`REQ-113` | The artifact opens from `file://` and the existing app runs — still storage-only, still no history. |
+| **1** | **Fragment build.** Drop ES-module syntax; attach fragments to one namespace; write `build.js`; emit `dist/trip-planner.html` with CSS and JS inlined and a classic script. | `REQ-103`, `REQ-107`–`REQ-113` | The artifact opens from `file://` and the existing app runs — still storage-only, still no history. |
 | **2** | **Canonical model.** Define the trip model as the superset; add passthrough bags; define the container envelope and canonical serialization. | `REQ-201`–`REQ-209`, `REQ-305`, `REQ-306` | Serialization is round-trip stable under a property test. |
 | **3** | **History core.** SHA-256, commit records, DAG, ancestry, keyframes, patch application, merge base. Pure logic, no DOM. | `REQ-301`–`REQ-311`, `REQ-316` | Generated histories reconstruct to identical payloads; a tampered commit is detected. |
 | **4** | **Storage adapter.** One interface, three implementations, write ordering, registry, quota. | `REQ-401`–`REQ-409` | Delete all storage, reopen the file, lose nothing. |

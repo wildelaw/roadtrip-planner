@@ -172,7 +172,7 @@ node build.js
   ├─ compute appHash       -> sha256 over the concatenated JS bytes
   ├─ compute policyHash    -> sha256 over the final script bytes
   ├─ write meta tags
-  └─ write trip-planner.html
+  └─ write dist/trip-planner.html
 ```
 
 | Rule | Why | Requirement |

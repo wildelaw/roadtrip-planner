@@ -1,186 +1,233 @@
 # Trip Planner
 
-A browser-only trip planning app. Plan trips day-by-day, track a budget, and let an AI agent
-plan the itinerary for you — including live web research — all stored in your browser. No backend.
+**Try it now: <https://wildelaw.github.io/roadtrip-planner/>** — the built artifact, served. Nothing
+to install, and no key needed (the AI tab is there because a served page has a web identity; it works
+with the mock transport and no spend).
 
-- **Storage:** IndexedDB (trips, expenses, AI conversations) + localStorage (settings). Nothing leaves your machine except calls to the Ollama host you configure.
-- **AI:** In-browser WebGPU (default, no key), Ollama Cloud (web search enabled), or a local Ollama instance — via an agent loop that calls `web_search` / `web_fetch` (cloud only) and writes the trip directly into the app — itinerary items, day notes, lodging, reservations, pre-trip actions, the location library, bucket list, checklists, budget estimates, contacts, tips, alerts, and (in EV mode) charging stops + min-SoC thresholds.
-- **Stack:** Vanilla JS + ES modules. No build step, no npm.
+A trip planner that is **one file**. `trip-planner.html` opens in any modern browser and runs from your
+disk: no server, no install, no account, no network. The file carries your itinerary *and* the
+application that edits it *and* the history of how it got there — so "the document" and "the app" are
+the same thing, and both travel with the file.
+
+The Pages site is that same file, published unchanged: the one you download is byte-for-byte the one
+the link serves.
+
+- **The file is the document.** `trip-planner.html` holds the trip, its full commit history, and the
+  application. Save it, copy it, email it — whoever opens it gets the plan and the tool.
+- **The browser is a cache, not the home.** Edits are saved into this browser so they survive a reload.
+  The copy that counts is the file you exported. The sidebar says which of the two you are looking at.
+- **History is real.** Every committed change is a commit with a message; reverting writes a *forward*
+  commit, so nothing is ever destroyed.
+- **Interchange both ways.** Import `trip-data.json` or `.ics`; export `trip-data.json`, a calendar, or
+  the document itself. What a calendar cannot carry is disclosed before you write it.
+- **AI planning, where the browser allows it.** Off under `file://`, by design — see below.
 
 ## Run it
 
-ES modules and the AI fetches require `http(s)`, so serve the folder (don't open `file://`):
+Open **<https://wildelaw.github.io/roadtrip-planner/>**, or build the file and open
+`dist/trip-planner.html`. Double-clicking it from your file manager is the intended path.
+
+`file://` is a first-class mode, not a degraded one: the itinerary, budget, bookings, checklists,
+history, import and export all work exactly as they do over the web. Two things differ, and the app says
+so where you would look for them:
+
+| | From a file | From a web address |
+|---|---|---|
+| AI planner | **Absent** (the tab is hidden and the transport refuses) | Available |
+| Saving | Download, or the text to copy (some browsers refuse downloads from `file://`) | Download via the File System Access API |
+
+**Why the AI is off from a file.** A file opened from disk has an opaque origin, shared with every other
+local file. A service key stored there would be readable by any of them, and the app cannot reach a
+service with no web identity anyway. So it does not pretend: the transport refuses before any request is
+made. Serve the folder and open it over `http://` and the AI tab appears:
 
 ```bash
-cd trip-planner
-python3 -m http.server 8000
-# open http://localhost:8000
+node build.js
+python3 -m http.server 8000    # then open http://localhost:8000/dist/trip-planner.html
 ```
 
-Any static server works (e.g. `npx serve`).
+Open **`/dist/trip-planner.html`**, not the folder root. A static server hands out `index.html` at `/`,
+and `index.html` is the shell template the build fills in — not the application. Serving the root
+therefore gets you the template: the program in its markup is still a placeholder, the content
+policy pins a hash of the real program instead, so the browser refuses to run it. The page is inert
+by design and its only diagnosis would be two content-policy errors in the console, so it says what
+it is on the page itself. That notice is authoring-only — it is not in the artifact.
 
-## Configure AI
+## Plan a trip
 
-Open **Settings** and pick a mode:
+| Tab | |
+|---|---|
+| **Itinerary** | The trip header (title, subtitle, vehicle, currency) and day-by-day items with per-day notes, alerts and tips |
+| **Checklists** | Category groups with per-item checkboxes |
+| **Lodging** | Stays with check-in/out, area, notes |
+| **Bookings** | Reservations (with book-by deadlines), no-reservation-needed items, pre-trip actions, contacts |
+| **Places** | Bucket list and a location library; drop any activity onto a day |
+| **Charging** | EV networks, per-leg minimum-SoC thresholds, per-day charge plans — the tab appears once a vehicle is set |
+| **Budget** | Line-item estimates grouped by category, with totals and a spent-vs-estimate roll-up |
+| **AI Planner** | The planning agent (served mode only), or the mock transport with no key and no spend |
+| **History** | Every commit, with messages and authors; revert to any of them |
 
-### In-browser WebGPU (default, no key, no chat network)
+Editing is ordinary editing; the app decides when a change is worth a commit. **Undo/redo** move within
+the changes made since the last commit — which is exactly what "undo" promises. Reversing a *committed*
+change is a different, more deliberate act: **History → Revert to this version**, which appends a new
+commit rather than rewriting the past.
 
-Runs a small LLM locally in the browser via [web-llm](https://github.com/mlc-ai/web-llm) on WebGPU.
-The model downloads from the MLC CDN on first use (one-time, cached after by the browser).
+## Import and export
 
-1. Pick a **WebGPU model** in Settings. Options:
-   - `Qwen2.5 0.5B` — default, ~944 MB VRAM, weak tool-calling
-   - `Qwen2.5 1.5B` — ~1.6 GB VRAM, partial tool-calling
-   - `Llama 3.2 1B` — ~879 MB VRAM, runs on almost any WebGPU device
-   - `Hermes-3 3B` — ~2.3 GB VRAM, **first-class function-calling** (best for the agent loop)
-   - `Qwen2.5 3B` — ~2.5 GB VRAM, partial tool-calling
-2. Click **Test connection** to download + warm the model.
-3. Browser support: Chrome/Edge 113+, Safari 17+, or Firefox with
-   `dom.computepainter.enabled` in `about:config`.
+**Import** reads a file as **text** and maps it into the model. It never inserts the file into the page,
+never parses it as markup, and never runs it. That is the security posture, not an implementation
+detail: an exported document is an executable HTML file, so *opening* one runs its code, and importing is
+the safe way to look inside.
 
-No web search in this mode — the agent plans from the model's own knowledge.
-Web tools (`web_search` / `web_fetch`) are only injected in Cloud mode.
+Importing creates a **new document** by default. Replacing the document you have open is a separate
+action with its own confirmation — it is the one thing that would discard real work.
 
-> **Granite note:** IBM Granite models are not MLC-compiled for the browser, so they can't run via
-> WebGPU. To use Granite, switch to **Local Ollama** mode and run
-> `ollama pull granite3.2:8b` (or `granite-4.0-h-tiny`), then select it as the model.
+| Format | In | Out |
+|---|---|---|
+| `trip-planner.html` (the document) | The whole thing — trip, history, app | The whole thing, verified before it is offered |
+| `trip-data.json` | Yes, lossless | Yes; loses only the UI-only `done` flags and derived roll-ups |
+| iCalendar (`.ics`) | Yes | Yes — the itinerary as a calendar |
 
-### Ollama Cloud (web search available)
-1. Create a key at <https://ollama.com/settings/keys>.
-2. Paste it into **API key**. Base URL defaults to `https://ollama.com`.
-3. Choose a **tool-capable model** (e.g. `qwen2.5:7b`, `llama3.1:8b`, `mistral-nemo`).
-4. Click **Test connection**.
+The `.ics` export is lossy and says so **before** it writes the file, naming what a calendar cannot
+carry: budget, expenses, checklists, lodging, bookings, contacts, charging plan, alerts, and the trip's
+history. The dialog's last line points at the file that *is* complete. The wording is generated from the
+same ledger the mapper is written against, so the disclosure and the code cannot drift apart.
 
-The agent exposes `web_search` / `web_fetch` as tools and calls the cloud endpoints
-`/api/web_search` and `/api/web_fetch` itself, then writes results back into the chat and your itinerary.
+## AI planning (served mode)
 
-### Local Ollama (no web search)
-1. Start Ollama allowing browser origins:
-   ```bash
-   OLLAMA_ORIGINS=* OLLAMA_HOST=0.0.0.0 ollama serve
-   ```
-   Without `OLLAMA_ORIGINS=*`, browsers get a **403 / CORS** error from `http://localhost:11434`.
-2. Pull a tool-capable model: `ollama pull qwen2.5:7b`.
-3. In Settings, set base URL to `http://localhost:11434` and pick the model.
-4. Local Ollama has no web search endpoint — the agent will plan from its own knowledge.
+Open the app over `http://` and pick a mode in **Settings**:
 
-## CORS notes
+- **In this browser (WebGPU)** — no key, no chat traffic. A small model runs locally via
+  [web-llm](https://github.com/mlc-ai/web-llm); the weights download once from the MLC CDN and are cached
+  by the browser. Chrome/Edge 113+, Safari 17+, or Firefox with `dom.computepainter.enabled`. No web
+  search in this mode.
+- **Ollama Cloud** — a key from <https://ollama.com/settings/keys>. This is the mode with `web_search`
+  and `web_fetch`, so the agent can look things up. Tool-capable models only (`qwen2.5:7b`,
+  `llama3.1:8b`, `mistral-nemo`).
+- **Local Ollama** — start it with `OLLAMA_ORIGINS=* OLLAMA_HOST=0.0.0.0 ollama serve`, point the base
+  URL at `http://localhost:11434`. No web search endpoint, so the agent plans from its own knowledge.
+  Without `OLLAMA_ORIGINS=*` the browser gets a 403.
+- **Mock transport** — the whole agent loop with a scripted reply. No network, no key, no spend. This is
+  the mode to use when you want to see the loop work.
 
-Ollama's cloud endpoints may not send permissive CORS headers for arbitrary browser origins. If
-**Test connection** fails with a network/CORS error:
+The agent calls tools and writes the trip directly — itinerary items, day notes, lodging, reservations,
+pre-trip actions, the location library, bucket list, checklists, budget estimates, contacts, tips,
+alerts, and (in EV mode) charging stops and SoC thresholds. Forty turns of tool calls land as **one**
+commit, not forty.
 
-- Set a **CORS proxy URL** in Settings (a local [`cors-anywhere`](https://github.com/Rob--W/cors-anywhere)
-  or your own relay). Every request is then prefixed with that URL.
-- Best option for the API key: run your own small relay that forwards to `ollama.com` and injects the
-  key server-side, so the key never reaches the browser. Point the **base URL** at the relay and clear the
-  browser-side key.
+Under `file://` every one of those entry points refuses, and so does the mock — no code path reaches the
+network, even with a stale tab.
 
-Error messages in the UI call out the likely cause (CORS vs. auth vs. wrong URL).
+**If a connection test fails with a CORS error**, Ollama's cloud endpoints do not always send permissive
+headers for an arbitrary browser origin. Settings takes a **CORS proxy URL** (a local
+[`cors-anywhere`](https://github.com/Rob--W/cors-anywhere) or your own relay) that every request is
+prefixed with. The error messages distinguish CORS from auth and from a wrong URL, so the banner tells
+you which one you have.
 
-## Import / export
+## Security posture
 
-- **Import:** click **⬆ Import** in the sidebar (or **Import trip-data.json** in Settings) and choose
-  a `trip-data.json` file. Every section is mapped into the planner's native model (days, items,
-  budget estimates, checklists, lodging, reservations, locations, contacts, alerts, EV data), and the
-  full original is preserved as `importedRaw` so nothing is lost.
-- **Export:** on the Itinerary tab, click **⬇ Export** to download the current trip as
-  `<title>-trip-data.json`. In Settings, **Export all trips** writes every trip as a JSON array.
+The whole design turns on one sentence: **an exported document is an executable HTML file.** Opening one
+means running its code. Everything below follows from taking that seriously.
 
-Import/export is **lossless** for unedited imports: sections rebuild from native fields so your edits
-are reflected, and synthetic internal `id`s are stripped on export when the source file had none.
-Checklists are stored as a typed `[{id, category, items:[{id,text,done}]}]` for editing and converted
-back to the on-disk `{category: string[]}` shape on export (the `done` flag is app-only).
+- **Import is text-only**, always. Read as text, located by string scanning, never inserted into the DOM,
+  never parsed as markup, never executed.
+- **The artifact has one origin.** Exactly one inline script, pinned by hash in a `script-src` policy,
+  and no external references of any kind — which is also why it works offline from a file. Any edit to
+  the program makes the policy stop matching, and the browser refuses to run it.
+- **No merge over untrusted JSON.** Reconciliation compares histories by ancestry; it never deep-merges
+  a file into your document. Divergence always asks.
+- **Patch path segments** `__proto__`, `constructor` and `prototype` are rejected before any path is
+  walked.
+- **Resource guards bound before the expensive step**, and each one names the limit and the value it
+  saw (document size, commit count, patch operations, nesting depth, embedded source length, calendar
+  property count and line length).
+- **A broken chain opens read-only**, names the commit that failed, and writes nothing.
+- **Nothing deletes commits without an explicit, informed confirmation** — not compaction, not a quota
+  error, not a cleanup path.
+- **The API key** lives in this browser's `localStorage` and never in the document: a key is not a
+  property of a portable file, and a document that carried one would hand it to everyone you send it to.
+  The field is masked and clearable. For stronger protection, run a small relay that holds the key and
+  point the base URL at it, leaving the browser-side key empty.
 
-## Trip data tabs
+## Build and test
 
-Every section of `trip-data.json` is now a first-class, editable, AI-writable feature:
+The app is built from 52 fragments in `src/` into the single self-contained
+`dist/trip-planner.html`:
 
-- **Itinerary** — trip header (title, subtitle, vehicle, currency) + day-by-day items. Each day has a
-  **Day notes** editor (title, drive, stay, summary, dining, tips). Alerts & tips are editable
-  (add/delete with severity).
-- **Checklists** — collapsible category groups with per-item checkboxes. Done state is kept in-app.
-- **Lodging** — stays with check-in/out, nights (derived), area, notes; days covered matched to the trip.
-- **Bookings** — reservations (with book-by deadlines + overdue highlight), no-reservation-needed
-  items, pre-trip actions (priority + done), and a contacts card.
-- **Places** — bucket list as dated chips + a location library (summary, lodging, charging, dining,
-  activities). Any activity or dining entry can be dropped onto a day via **Add to a day**.
-- **Charging** *(EV mode — appears only when a vehicle is set)* — charging networks, per-leg min-SoC
-  thresholds with severity colors, and a per-day charge-plan summary.
-- **Budget** — line-item estimates grouped by category (the editable source of truth); totals and the
-  spent-vs-estimate bar roll up automatically. Actual expenses tracked separately.
+```bash
+node build.js        # writes dist/trip-planner.html
+node test/run.js     # the test suite
+```
 
-Set a **vehicle** in the Edit-trip modal to enable EV mode (the Charging tab appears, and the AI agent
-gets EV tools + range-aware guidance).
+**The artifact needs nothing.** `node build.js` uses no dependencies and nothing in `package.json` is
+ever bundled into it — that is a requirement, not a convenience (`REQ-807`, `PATTERN.md` §5.11).
 
-## Dev / no-spend testing
+**The output lands in `dist/`, which is git-ignored.** That is deliberate: the artifact is a *build
+output*, and a repository that carries its own build ships a second copy of the app — the copy people
+actually open — so a commit that edited `src/` without rebuilding would publish a file that disagrees
+with its own source, silently. One command reproduces it from a bare checkout.
 
-Toggle **Mock transport** in Settings to run the entire agent loop with **no network and no API spend**.
-The mock returns a scripted sequence (`web_search` → `web_fetch` → `set_day_plan` → final answer), so you
-can verify the agent loop, tool dispatch, write-back, persistence, and live itinerary re-render without a key.
+```bash
+npm install          # optional, and only for the test suite's cross-check
+```
 
-## Security note
+`npm install` pulls one **dev** dependency, `ajv`. The hand-written validators are cross-checked against
+it over a corpus of real files, because a subtly wrong validator is worse than none — it gives confident
+wrong answers. The cross-check skips when `ajv` is absent, so a bare checkout still runs the whole suite.
 
-The Ollama Cloud API key is stored in `localStorage` (one machine, personal tool). Risks: any XSS in the
-app could read it, and anyone with access to your browser profile can read it. Mitigations in this app:
+`node test/mock-scenarios.js` is **not** the test suite. It prints canned agent transcripts for reading
+by hand — what the model was told after each tool call — which is what you want when the agent behaves
+oddly against a real service. The suite asserts; that file narrates.
 
-- AI markdown output is rendered with a built-in escape-first renderer (no external
-  dependency): input is HTML-escaped before any markup is introduced, so model output
-  can never inject raw HTML/scripts.
-- The key field is masked with a show/hide toggle and a **Clear** button.
-- The key is never logged.
+## Publishing
 
-For stronger protection, use a server-side relay that holds the key (see CORS notes) and leave the
-browser-side key empty.
+`.github/workflows/pages.yml` builds, runs the suite, and publishes `dist/` to **GitHub Pages** at
+<https://wildelaw.github.io/roadtrip-planner/> — on every push to `main`, and on demand from the
+Actions tab (`workflow_dispatch`) for any branch. The suite runs *before* the deploy and a failure
+stops it: the Pages site is the one place this app is served to somebody who did not build it, so it
+is the last place to publish a build the repository's own checks refuse.
+
+The workflow adds a `dist/index.html` that redirects to `trip-planner.html`, because Pages serves
+`index.html` at the site root and a link to the bare site should work. It is a redirect and not a
+copy: `trip-planner.html` keeps its own name and its own address, because that address is what a
+person bookmarks and what a link to this app points at. Enabling Pages for the first time needs
+**Settings → Pages → Source: GitHub Actions** once.
+
+There is no build step in the published page itself. The file the workflow uploads is the file
+`node build.js` produces locally, byte for byte — which is the property the whole design is for.
 
 ## Project layout
 
 ```
-index.html              # single page (9 tabs: Itinerary, Checklists, Lodging, Bookings, Places, Charging*, Budget, AI, Settings)
-styles/main.css
-app/
-  main.js               # entry
-  store.js              # data layer (trip/expense/conversation + all collection CRUD + UI state)
-  db.js                 # IndexedDB
-  io.js                 # import/export (trip-data.json format, lossless round-trip + normalization)
-  settings.js           # settings (localStorage)
-  ai/
-    ollama.js           # HTTP client + CORS-aware error classification (cloud/local)
-    webgpu.js           # in-browser WebGPU transport (web-llm, lazy-loaded)
-    webgpu-worker.js    # web-llm worker thread
-    transport.js        # dispatcher: routes chat() to ollama or webgpu based on settings
-    agent.js            # agent loop
-    tools.js            # tool schemas + dispatch (planning, booking, places, EV tools)
-    prompt.js           # system prompt (+ EV appendix) + trip context
-    mock.js             # scripted dev transport
-  ui/
-    shell.js            # tabs (EV tab auto-shown when a vehicle is set)
-    trip-list.js        # sidebar + new/edit trip modal (incl. subtitle + vehicle editor)
-    trip-editor.js      # itinerary tab + editable alerts & tips
-    itinerary-day.js    # per-day items + Day notes editor
-    checklists.js       # checklists tab
-    lodging.js          # lodging tab
-    bookings.js         # bookings & tasks tab (+ contacts)
-    places.js           # places tab (locations + bucket list + "add to a day")
-    charging.js         # EV charging tab (gated on vehicle)
-    budget.js           # budget tab (line-item estimates + expenses)
-    ai-panel.js         # AI planner tab
-    settings-view.js    # settings tab
-    toast.js, modal.js  # helpers
-  utils/ id.js, dates.js, format.js
-test/mock-scenarios.js  # canned transcripts (manual)
+dist/
+  trip-planner.html      # THE ARTIFACT — the app, the trip, and its history in one file (BUILD OUTPUT)
+build.js                 # concatenates src/ into the artifact, with static checks
+index.html               # the shell template the artifact is built from
+styles/main.css          # the stylesheet, inlined and hash-pinned
+vendor/                  # the vendored schemas (container, trip-data.json, RFC 5545) + provenance
+.github/workflows/       # build + test + publish dist/ to GitHub Pages
+src/
+  fragments.js           # the fragment list and their order — the one answer to "what bytes is the app"
+  environment.js         # served vs file://, and what each permits
+  core/                  # container codec, history DAG, patch, merge, canonical serialization, SHA-256
+  model/trip.js          # the canonical model and its normalizer
+  storage/               # localStorage + memory + null adapters, and the document registry
+  interchange/           # the lossiness ledger, the two mappers
+  validators/            # hand-written validators for the vendored schemas
+  io/                    # import (text-only) and export (clone + verify)
+  ui/                    # the render seam and one module per view
+  ai/                    # transport dispatcher, agent loop, tools, prompt, mock
+  store.js               # the working copy, commits, autosave, read-only
+  boot.js                # the read-only decision, and the only side-effecting fragment
+test/                    # the suite (*.test.js), the harness, and the transcript reader
+specs/                   # the 11 spec documents this was built against
+decisions/               # the ADRs, including where the build deviates from the specs
+PATTERN.md               # the Portable Versioned Document pattern
+docs/                    # the pattern walk-through
+app/                     # the RETIRED v1 application, kept for reference (specs/06 §8, 08 §10)
 ```
 
-## Verify end-to-end
-
-1. **WebGPU path (default):** Settings → WebGPU mode → **Test connection** (downloads model, ~400 MB
-   for Qwen2.5 0.5B) → create a 2-day trip → AI Planner → **Plan my trip** → confirm items are written
-   into the Itinerary tab. No key, no network for chat after the one-time model download.
-2. **Mock path (no spend):** Settings → enable Mock transport → AI Planner → **Plan my trip** →
-   confirm scripted items appear in the Itinerary tab and the conversation replays after reload.
-3. **Cloud smoke test:** real key, small tool-capable model, `maxIterations: 4`, `num_ctx: 16000`,
-   "Plan 2 days in Osaka" on a 2-day trip. Confirm `web_search` fires and items are written.
-4. **Local:** `OLLAMA_ORIGINS=* ollama serve`, tool-capable model, base URL `http://localhost:11434`.
-   Expect web tools to report "only available in Ollama Cloud mode" and the agent to plan from knowledge; no 403.
-5. **Error paths:** unset key (auth UI), wrong base URL (network/CORS banner), local without
-   `OLLAMA_ORIGINS` (403 + guidance), broken proxy URL (network banner), WebGPU on an unsupported
-   browser (clear "WebGPU not available" message).
+`PATTERN.md` and `specs/` are the specification; `decisions/` records the choices made while
+implementing it, **including the deliberate deviations** — a spec that disagrees with the code is a
+defect, so where the two came apart the disagreement was recorded rather than left in a comment.
+`specs/00-overview.md` is the place to start reading.

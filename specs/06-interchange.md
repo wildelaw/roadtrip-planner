@@ -55,6 +55,35 @@ detect(text):
 Refusing matters. A file that is *nearly* a format is the case where a lenient parser silently
 produces a nearly-empty document, and the user concludes the app lost their data.
 
+**`trip-data.json` gains one step, and only that format.** It is first-party, so its spelling can
+change between generations of this app without anyone outside noticing — and it is the format a
+person is most likely to be holding an old copy of, because it is the one the app tells them to keep.
+
+```
+detect(text) -> TRIPDATA -> upgrade(value) -> check('tripdata', upgraded) -> toTrip
+                                 ^                     ^
+                    generation 1 becomes    |  the schema is asked about the
+                    this generation here    |  document the app will actually read
+```
+
+`TP.tripdatajson.upgrade` is gated on **shape, never on a version field** — the files that need it
+predate any such field. A document is the previous generation iff it shows a value this generation's
+exporter cannot write (a numeric `days[].id`, a numeric `days[].chargeStops`, a boolean `days[].nacs`,
+or text where a `minSoc` is expected); once one is found, the coercions are applied document-wide, with
+any value this generation cannot type preserved verbatim in the passthrough bag rather than dropped.
+The vendored schema is **not** widened: a schema that accepts a number where it means a string has
+stopped saying what the format is, and it cannot express the prose cases at all. `ADR-0019` records
+the marker set, the coercion table, and why each alternative was rejected.
+
+| Rule | |
+|---|---|
+| A validator must not refuse what the detector accepts | §2. On a generation-1 file it did, by 48 counts — the two disagreed about one document |
+| A format's own older spelling is an upgrade, not a malformed file | It is neither hostile input nor a mistake by the user; it is a file this app wrote |
+| A value this generation cannot type is **P**, never silently dropped | `REQ-504`, and the `costRaw`/`timeRaw` precedent for exactly this |
+| A modern file is not coerced | The gate is the point. A hand-edited wrong type in a modern file is still refused, and the refusal names the path |
+| The upgrade is idempotent | Every marker is gone from its own output, so importing an exported file twice cannot change it twice |
+| Both readers run it | `readTripData` and the AI's `guardResult` — one answer to "what is this file", not one in the picker and another to the model |
+
 ---
 
 ## 3. The lossiness ledger
@@ -86,20 +115,20 @@ a disclosure obligation, not a silent omission.
 | `trip.currency` | M | D | Disclosed. Synthesized as `USD` when absent (`03-data-model.md` §7) |
 | `trip.startDate` / `endDate` | M | D | Derivable from the earliest/latest `VEVENT`; **derived on import**, never stored from the `.ics` |
 | `trip.destinations[]` | M | D | Disclosed |
-| `trip.travelers[]` | M | F | Folded into `ATTENDEE` where an email exists; a traveller with no email survives only as a name in `DESCRIPTION`. Un-folding is best-effort and the ledger says so |
+| `trip.travelers[]` | M | F | Folded into `ATTENDEE` where an email exists; the names travel in `X-TP-TRAVELERS`, one per line, which restores their order too. The address, which the model has no field for, is kept in the traveller's bag. Un-folding is best-effort: two travellers with the same name and only one address come back paired the other way round |
 | `trip.vehicle` (all six fields) | M | D | Disclosed. EV planning has no calendar representation |
 
 ### 3.2 Days and items
 
 | Canonical field | `trip-data.json` | iCalendar | Note |
 |---|---|---|---|
-| `day.id` | M | D | Derived on import from `DTSTART` |
+| `day.id` | M | D | Derived on import from `DTSTART`; the `UID` this app writes embeds it (`03-data-model.md` §3), so a day from our own file keeps its id, but a calendar carries no day id. The previous generation's exporter minted a **number** here; the upgrade stringifies it, because `canonical.serialize` distinguishes `1` from `"1"` and the id is what the `UID` embeds (`ADR-0019`) |
 | `day.date` | M | M | `DTSTART` / `DTEND` of the day's all-day event |
 | `day.title` | M | F | Folded into that event's `SUMMARY` |
 | `day.stay` | M | F | Folded into `DESCRIPTION` |
 | `day.drive` | M | F | Folded into `DESCRIPTION` |
-| `day.chargeStops` | M | F | Folded into `DESCRIPTION` |
-| `day.nacs` | M | F | Folded into `DESCRIPTION` |
+| `day.chargeStops` | M | F | Folded into `DESCRIPTION`. Written as a number by the previous generation; the upgrade stringifies it (`ADR-0019`) |
+| `day.nacs` | M | F | Folded into `DESCRIPTION`. Written as a **boolean** by the previous generation; the upgrade restores the text its UI rendered for `true` and omits the field for `false` (`ADR-0018`, `ADR-0019`) |
 | `day.summary` | M | F | Folded into `DESCRIPTION` |
 | `day.dining[]` | M | F | Folded into `DESCRIPTION` as a list |
 | `day.tips[]` | M | F | Folded into `DESCRIPTION` as a list |
@@ -114,8 +143,16 @@ a disclosure obligation, not a silent omission.
 | `item.durationMin` | M | F | Folded into `DTEND − DTSTART` |
 | `item.confirmation` | M | F | Folded into `DESCRIPTION` |
 | `item.notes` | M (`desc`) | M (`DESCRIPTION`) | |
-| `item.flags` (8 keys: `charge`, `overnight`, `tour`, `warn`, `minSoc`, `minSocCritical`) | M | D | Disclosed. Unrepresentable in a calendar |
-| `item.x.iCal` (unmodelled `VEVENT` properties) | M | P / M | `VALARM`, `RRULE`, `ATTENDEE`, `ORGANIZER`, `SEQUENCE`, `STATUS`, `GEO`, `CATEGORIES`, `URL`, `CLASS`, `TRANSP`, `PRIORITY`, `CREATED`, `LAST-MODIFIED` → **P** on `.ics`; **M** on `trip-data.json` (they ride along in the bag) |
+| `item.flags` (8 keys: `charge`, `overnight`, `tour`, `warn`, `minSoc`, `minSocCritical`) | M | D | Disclosed. Unrepresentable in a calendar. A `minSoc` the wire spelled in prose — which the previous generation did, `"54% — FLOOR for the day"` — is kept verbatim in the bag as `minSocRaw` and written back, exactly as a non-numeric `cost` is, so `M` holds rather than becoming a silent **D** (`ADR-0019`) |
+| `item.x.iCal` (unmodelled `VEVENT` properties) | M | P / M | `VALARM`, `RRULE`, `ORGANIZER`, `SEQUENCE`, `STATUS`, `GEO`, `CATEGORIES`, `URL`, `CLASS`, `TRANSP`, `PRIORITY`, `CREATED`, `LAST-MODIFIED` → **P** on `.ics`; **M** on `trip-data.json` (they ride along in the bag). `ATTENDEE` is **not** in this bag — see the row below |
+| `ATTENDEE` (not a bag member; consumed into `trip.travelers[]`) | M | F | The `CN` becomes the traveller's name and the `mailto:` the address in the traveller's bag. A line carrying anything else — `PARTSTAT`, `ROLE`, `RSVP` — names something the model has no field for, so the **whole line** is kept on the traveller and written back verbatim. Bagging it per event instead would duplicate every traveller once per event, since this app writes them on every one (`ADR-0017`) |
+
+Two properties the calendar carries belong to this app and are not fields, so they have no row: `X-TP-TRAVELERS`
+(the traveller names, in order — it is what makes the fold of §3.1 reversible at all, including for a
+traveller with no address) and `X-TP-KIND: ITEM` (marks a date-only `VEVENT` that is a **timeless item**
+rather than a day heading, which is the one shape the calendar cannot otherwise tell apart). Both are
+`X-` properties, which is where RFC 5545 puts a producer's own conventions, and both are ignored by a
+reader that does not know them (`ADR-0017`).
 
 ### 3.3 Collections
 
@@ -126,8 +163,8 @@ a disclosure obligation, not a silent omission.
 | `noReservationNeeded[]` (2 fields) | M | D | Disclosed |
 | `preTripActions[]` (4 fields + `done`) | M / D | D | `done` is **D**. Disclosed |
 | `bucketList[]` (3 fields) | M | D | Disclosed |
-| `chargingNetworks[]` (5 fields) | M | D | Disclosed |
-| `minSocThresholds[]` (6 fields) | M | D | Disclosed |
+| `chargingNetworks[]` (5 fields) | M | D | Disclosed. The previous generation wrote `nacsAdapter` as free text (`"True"`, `"Tesla SC: Yes"`); text this generation cannot read as a boolean is kept verbatim in the bag as `nacsAdapterRaw` (`ADR-0019`) |
+| `minSocThresholds[]` (6 fields) | M | D | Disclosed. The previous generation wrote `minSoc` as free text (`"100%"`, `"60%+"`), kept verbatim in the bag as `minSocRaw` (`ADR-0019`) |
 | `locations[]` (8 fields incl. nested `activities[]`) | M | D | Disclosed |
 | `contacts[]` (2 fields) | M | D | Disclosed |
 | `keyTips[]` | M | F | Folded into `X-WR-CALDESC` |
@@ -157,7 +194,12 @@ not merely enumerate what is missing. Otherwise a user reasonably concludes thei
 | Import is lossless | **Both** formats | `REQ-504` |
 | Export is lossy and discloses it | `.ics` (extensively), `trip-data.json` (only `done` flags and derived fields) | `REQ-511` |
 | Unedited imports round-trip without loss | `trip-data.json` | `REQ-513` |
-| Bags survive a round-trip through either format | Both | `REQ-205` |
+| Bags survive a round-trip through the format they came from | Both | `REQ-205` |
+
+An `x.iCal` bag also survives a round-trip through `trip-data.json`, where it rides in the carrier
+(§3.2's `item.x.iCal` row). The reverse does not hold and cannot: a calendar has no place for a JSON
+bag, so a `x.tripDataJson` bag is dropped by an `.ics` export, which is what the **D** in §3.1's and
+§3.2's bag rows discloses.
 
 `trip-data.json`'s remaining loss is exactly two things — the UI-only `done` flags and derived
 roll-ups — and both are named above. That is a much shorter list than the present code's implicit one,
