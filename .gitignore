@@ -4,10 +4,18 @@ Thumbs.db
 .vscode/
 .idea/
 
-# No build artifacts (vanilla JS, no npm), but just in case:
+# The build the artifact needs nothing to produce, but `npm install` is optional and only
+# ever for the test suite's validator cross-check (README, "Build and test").
 node_modules/
-dist/
 *.log
 
-# test files used for development, but not needed in production
+# The BUILD OUTPUT. `node build.js` writes dist/trip-planner.html here, and the GitHub Pages
+# deployment publishes exactly this folder (.github/workflows/pages.yml). It is ignored because the
+# artifact is a compiled result: a repository that carries its own build ships a second copy of the
+# app, and the copy is the one people open — so a commit that edited src/ without rebuilding would
+# publish a file that disagrees with its own source, silently. `node build.js` reproduces it from a
+# bare checkout with nothing installed.
+dist/
+
+# A sample interchange file, used while developing the mappers, not part of the app
 trip-data.json

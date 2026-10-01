@@ -1,0 +1,343 @@
+{
+  "trip": {
+    "title": "Desert Loop",
+    "startDate": "2026-10-10",
+    "endDate": "2026-10-12",
+    "subtitle": "Three days out and back",
+    "currency": "USD",
+    "destinations": [
+      "Flagstaff",
+      "Sedona"
+    ],
+    "travelers": [
+      {
+        "name": "Alex"
+      },
+      {
+        "name": "Sam",
+        "type": "adult"
+      }
+    ],
+    "vehicle": {
+      "model": "R1T",
+      "batteryKWh": 135,
+      "efficiencyMilesPerKWh": 2.3,
+      "fullRangeMiles": 314,
+      "usableRangeMiles": 290,
+      "chargingConvention": "NACS"
+    }
+  },
+  "days": [
+    {
+      "id": 1,
+      "date": "Oct 10 (Sat)",
+      "title": "San Diego → Flagstaff",
+      "stay": "Flagstaff",
+      "drive": "492 mi",
+      "chargeStops": 3,
+      "nacs": true,
+      "summary": "Longest drive day. Depart at 100%.",
+      "dining": [
+        "Pizzicleta",
+        "Beaver Street Brewery"
+      ],
+      "tips": [
+        "Leave early — the day is mostly driving"
+      ],
+      "items": [
+        {
+          "time": "7:00 AM MST",
+          "activity": "Depart San Diego (100% SoC)",
+          "minSoc": "100%",
+          "minSocCritical": true,
+          "desc": "I-8 E to I-10, then north on I-17."
+        },
+        {
+          "time": "8:18 AM MST",
+          "activity": "RAN — Wellton, AZ",
+          "charge": true,
+          "desc": "91 mi / 1h18m. 25 min charge. Plug & Charge.",
+          "cost": "$0"
+        },
+        {
+          "time": "3:30 PM MST",
+          "activity": "Arrive Flagstaff",
+          "overnight": true,
+          "location": "Flagstaff",
+          "desc": "Overnight L2 at the hotel."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "date": "Oct 11 (Sun)",
+      "title": "Grand Canyon day",
+      "stay": "Flagstaff",
+      "drive": "160 mi",
+      "chargeStops": 1,
+      "nacs": false,
+      "summary": "South Rim and back.",
+      "tips": [
+        "Sunrise at Mather Point is worth the alarm"
+      ],
+      "items": [
+        {
+          "time": "5:00 AM MST",
+          "activity": "Leave for the South Rim",
+          "minSoc": "~30%+ needed to reach Flagstaff charger",
+          "minSocCritical": false,
+          "desc": "US-180 north to Tusayan.",
+          "warn": true
+        },
+        {
+          "time": "11:00 AM MST",
+          "activity": "Mather Point",
+          "tour": true,
+          "location": "Grand Canyon Village",
+          "desc": "Rim Trail west from the visitor center."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "date": "Oct 12 (Mon)",
+      "title": "Flagstaff → Canyon de Chelly",
+      "stay": "Chinle",
+      "drive": "330 mi",
+      "chargeStops": 2,
+      "nacs": true,
+      "summary": "The Navajo Nation observes MDT; the tour is local time.",
+      "dining": [
+        "Junction Restaurant"
+      ],
+      "tips": [
+        "No charging in Chinle — round trip on the arrival charge"
+      ],
+      "items": [
+        {
+          "time": "1:00 PM MDT",
+          "activity": "Beauty Way Jeep Tour",
+          "tour": true,
+          "minSoc": "54% — FLOOR for the day",
+          "minSocCritical": true,
+          "cost": "248.20",
+          "currency": "USD",
+          "desc": "Three hours, Canyon de Chelly floor."
+        },
+        {
+          "time": "7:30 PM MDT",
+          "activity": "Dinner in Chinle",
+          "location": "Chinle",
+          "desc": "The only sit-down in town."
+        }
+      ]
+    }
+  ],
+  "lodging": [
+    {
+      "id": "flagstaff",
+      "location": "Flagstaff hotel",
+      "checkIn": "2026-10-10",
+      "checkOut": "2026-10-12",
+      "nights": 2,
+      "area": "Near downtown",
+      "notes": "Confirmation Number: BOOKING-REF"
+    },
+    {
+      "id": "chinle",
+      "location": "Chinle lodge",
+      "checkIn": "2026-10-12",
+      "checkOut": "2026-10-13",
+      "nights": 1,
+      "area": "Route 7",
+      "notes": "Confirmation Number: BOOKING-REF"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "jeep",
+      "what": "Beauty Way Jeep Tour 1PM/3hour",
+      "when": "2026-10-12",
+      "duration": "3 hr",
+      "cost": "$248.20/group (1–6 ppl)",
+      "howToBook": "https://example.invalid/tours",
+      "bookBy": "2026-09-18",
+      "priority": "high"
+    },
+    {
+      "id": "caverns",
+      "what": "Kartchner Caverns — Big Room",
+      "when": "2026-10-16",
+      "duration": "1.5 hr",
+      "howToBook": "azstateparks.com/reserve/tours",
+      "bookBy": "2026-09-20",
+      "priority": "medium"
+    }
+  ],
+  "noReservationNeeded": [
+    {
+      "what": "Grand Canyon South Rim",
+      "notes": "America the Beautiful Pass (already have)"
+    }
+  ],
+  "preTripActions": [
+    {
+      "id": "book-jeep",
+      "text": "Book the jeep tour — October is peak season",
+      "category": "reservation",
+      "priority": "high"
+    },
+    {
+      "id": "offline-maps",
+      "text": "Download offline maps for Canyon de Chelly",
+      "category": "digitalPrep",
+      "priority": "medium"
+    }
+  ],
+  "bucketList": [
+    {
+      "id": "grand-canyon",
+      "name": "Grand Canyon",
+      "date": "2026-10-11",
+      "dateLabel": "Oct 11"
+    }
+  ],
+  "chargingNetworks": [
+    {
+      "id": "flagstaff-ran",
+      "name": "Flagstaff RAN",
+      "location": "Flagstaff",
+      "network": "Rivian Adventure Network",
+      "nacsAdapter": false
+    },
+    {
+      "id": "wellton",
+      "name": "Wellton, AZ",
+      "location": "I-8 near Yuma",
+      "network": "Tesla SC",
+      "nacsAdapter": true
+    },
+    {
+      "id": "tucson-various",
+      "name": "Tucson (various)",
+      "location": "Tucson",
+      "network": "Tesla SC / EA / others",
+      "nacsAdapter": "Tesla SC: Yes"
+    }
+  ],
+  "minSocThresholds": [
+    {
+      "day": "Oct 10",
+      "leg": "Arrival leg",
+      "minSoc": "100%",
+      "reason": "492 mi — longest drive day",
+      "severity": "accent"
+    },
+    {
+      "day": "Oct 12",
+      "leg": "Canyon de Chelly",
+      "minSoc": "100%",
+      "reason": "No charging in Chinle — must round-trip on one charge",
+      "severity": "danger"
+    },
+    {
+      "day": "Oct 13",
+      "leg": "Departure leg",
+      "minSoc": "60%+",
+      "reason": "Charge at the Sedona RAN first",
+      "severity": "info"
+    }
+  ],
+  "locations": [
+    {
+      "id": "flagstaff",
+      "name": "Flagstaff, AZ",
+      "icon": "🏔️",
+      "summary": "Base camp for the Grand Canyon.",
+      "lodging": "2 nights. Verify L2 charging.",
+      "charging": [
+        "RAN Flagstaff — Plug & Charge, no adapter needed"
+      ],
+      "dining": [
+        "Pizzicleta"
+      ],
+      "activities": [
+        {
+          "name": "Lowell Observatory",
+          "type": "attraction",
+          "desc": "Historic observatory where Pluto was discovered."
+        },
+        {
+          "name": "Walnut Canyon National Monument",
+          "type": "nature",
+          "desc": "Sinagua cliff dwellings."
+        }
+      ]
+    }
+  ],
+  "contacts": [
+    {
+      "what": "Grand Canyon NP — South Rim information",
+      "how": "visitor information line · Grand Canyon Village"
+    },
+    {
+      "what": "Canyon de Chelly Visitor Center",
+      "how": "visitor information line · Route 7, Chinle"
+    }
+  ],
+  "criticalAlerts": [
+    {
+      "severity": "danger",
+      "title": "Time Zone — Oct 12",
+      "text": "Navajo Nation observes MDT (1 hr ahead of AZ MST). The 1 PM tour is local MDT."
+    }
+  ],
+  "budgetEstimates": [
+    {
+      "category": "Tours",
+      "item": "Beauty Way Jeep Tour",
+      "cost": "$248.20"
+    },
+    {
+      "category": "Lodging",
+      "item": "Flagstaff hotel",
+      "cost": "$410.00",
+      "optional": false
+    },
+    {
+      "category": "Parks",
+      "item": "Kartchner Caverns",
+      "cost": "$46.00",
+      "optional": true
+    }
+  ],
+  "keyTips": [
+    "Book the jeep tour and Kartchner tours NOW — October is peak",
+    "NACS adapter essential — 4+ Tesla SC stops"
+  ],
+  "checklists": {
+    "evDriving": [
+      "Pack NACS adapter — essential for 4+ Tesla SC stops",
+      "Offline maps downloaded",
+      "Rivian charging app set up"
+    ],
+    "digitalPrep": [
+      "Confirm hotel L2 charging at every stop",
+      "Charge to 100% the night before departure"
+    ]
+  },
+  "expenses": [
+    {
+      "date": "2026-10-10",
+      "category": "Parks",
+      "amount": 80,
+      "label": "America the Beautiful Pass"
+    },
+    {
+      "date": "2026-10-12",
+      "category": "Tours",
+      "amount": 248.2,
+      "label": "Beauty Way Jeep Tour"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trip-planner.invalid/schemas/icalendar-rfc5545.json",
+  "title": "RFC 5545 structural table (the subset this app validates)",
+  "description": "NOT a JSON Schema of iCalendar — iCalendar is not JSON. This is a vendored transcription of the parts of RFC 5545 that a validator can check structurally: which components require which properties, which components may nest inside which, the value type of each property the app understands, and the line-length rule. It is deliberately INCOMPLETE (ADR-0008): it names the properties this app and the vendored corpus actually use. A property outside these tables is accepted without interpretation, because a calendar from the wider world is not an error just for being unfamiliar.",
+  "limits": {
+    "maxLineOctets": 75,
+    "maxPropertyCount": 200000,
+    "maxComponentDepth": 16
+  },
+  "valueTypes": [
+    "TEXT", "DATE", "DATE-TIME", "DATE-TIME-OR-DATE", "DURATION", "CAL-ADDRESS", "INTEGER",
+    "URI", "BOOLEAN", "FLOAT", "FLOAT-PAIR", "RECUR", "PERIOD", "UTC-OFFSET", "BINARY"
+  ],
+  "components": {
+    "VCALENDAR": {
+      "required": ["PRODID", "VERSION"],
+      "contains": ["VEVENT", "VTODO", "VJOURNAL", "VFREEBUSY", "VTIMEZONE"],
+      "properties": {
+        "PRODID": "TEXT",
+        "VERSION": "TEXT",
+        "CALSCALE": "TEXT",
+        "METHOD": "TEXT",
+        "X-WR-CALNAME": "TEXT",
+        "X-WR-CALDESC": "TEXT",
+        "X-WR-TIMEZONE": "TEXT"
+      }
+    },
+    "VEVENT": {
+      "required": ["UID", "DTSTAMP"],
+      "contains": ["VALARM"],
+      "properties": {
+        "UID": "TEXT",
+        "DTSTAMP": "DATE-TIME",
+        "DTSTART": "DATE-TIME-OR-DATE",
+        "DTEND": "DATE-TIME-OR-DATE",
+        "DURATION": "DURATION",
+        "SUMMARY": "TEXT",
+        "DESCRIPTION": "TEXT",
+        "LOCATION": "TEXT",
+        "STATUS": "TEXT",
+        "CLASS": "TEXT",
+        "TRANSP": "TEXT",
+        "PRIORITY": "INTEGER",
+        "SEQUENCE": "INTEGER",
+        "CREATED": "DATE-TIME",
+        "LAST-MODIFIED": "DATE-TIME",
+        "ORGANIZER": "CAL-ADDRESS",
+        "ATTENDEE": "CAL-ADDRESS",
+        "CATEGORIES": "TEXT",
+        "URL": "URI",
+        "GEO": "FLOAT-PAIR",
+        "RRULE": "RECUR",
+        "RDATE": "DATE-TIME-OR-DATE",
+        "EXDATE": "DATE-TIME-OR-DATE",
+        "RECURRENCE-ID": "DATE-TIME-OR-DATE"
+      }
+    },
+    "VTODO": {
+      "required": ["UID", "DTSTAMP"],
+      "contains": ["VALARM"],
+      "properties": {
+        "UID": "TEXT", "DTSTAMP": "DATE-TIME", "DTSTART": "DATE-TIME-OR-DATE",
+        "DUE": "DATE-TIME-OR-DATE", "SUMMARY": "TEXT", "DESCRIPTION": "TEXT",
+        "STATUS": "TEXT", "PRIORITY": "INTEGER", "SEQUENCE": "INTEGER"
+      }
+    },
+    "VJOURNAL": {
+      "required": ["UID", "DTSTAMP"],
+      "contains": [],
+      "properties": {
+        "UID": "TEXT", "DTSTAMP": "DATE-TIME", "DTSTART": "DATE-TIME-OR-DATE",
+        "SUMMARY": "TEXT", "DESCRIPTION": "TEXT", "STATUS": "TEXT"
+      }
+    },
+    "VFREEBUSY": {
+      "required": ["UID", "DTSTAMP"],
+      "contains": [],
+      "properties": {
+        "UID": "TEXT", "DTSTAMP": "DATE-TIME", "DTSTART": "DATE-TIME-OR-DATE",
+        "DTEND": "DATE-TIME-OR-DATE", "FREEBUSY": "PERIOD", "ORGANIZER": "CAL-ADDRESS",
+        "ATTENDEE": "CAL-ADDRESS", "URL": "URI"
+      }
+    },
+    "VTIMEZONE": {
+      "required": ["TZID"],
+      "contains": ["STANDARD", "DAYLIGHT"],
+      "properties": { "TZID": "TEXT", "LAST-MODIFIED": "DATE-TIME", "TZURL": "URI" }
+    },
+    "STANDARD": {
+      "required": ["DTSTART", "TZOFFSETFROM", "TZOFFSETTO"],
+      "contains": [],
+      "properties": {
+        "DTSTART": "DATE-TIME", "TZOFFSETFROM": "UTC-OFFSET", "TZOFFSETTO": "UTC-OFFSET",
+        "RRULE": "RECUR", "RDATE": "DATE-TIME", "TZNAME": "TEXT", "COMMENT": "TEXT"
+      }
+    },
+    "DAYLIGHT": {
+      "required": ["DTSTART", "TZOFFSETFROM", "TZOFFSETTO"],
+      "contains": [],
+      "properties": {
+        "DTSTART": "DATE-TIME", "TZOFFSETFROM": "UTC-OFFSET", "TZOFFSETTO": "UTC-OFFSET",
+        "RRULE": "RECUR", "RDATE": "DATE-TIME", "TZNAME": "TEXT", "COMMENT": "TEXT"
+      }
+    },
+    "VALARM": {
+      "required": ["ACTION", "TRIGGER"],
+      "contains": [],
+      "properties": {
+        "ACTION": "TEXT", "TRIGGER": "DURATION", "DURATION": "DURATION",
+        "REPEAT": "INTEGER", "DESCRIPTION": "TEXT", "SUMMARY": "TEXT",
+        "ATTENDEE": "CAL-ADDRESS", "UID": "TEXT",
+        "ACKNOWLEDGED": "DATE-TIME"
+      }
+    }
+  },
+  "root": "VCALENDAR",
+  "notes": [
+    "DTSTART is required on a VEVENT only when the object carries no METHOD; the validator therefore treats a missing DTSTART as a warning-shaped case and not a structural failure, because a METHOD-carrying calendar is a legitimate file.",
+    "A VEVENT may carry DTEND or DURATION but not both; this is checked in code because it is a relation between two properties rather than a property table.",
+    "PRODID and VERSION are the two properties a VCALENDAR must have, and they are also the two that identify a file as a calendar rather than a text file that mentions iCalendar."
+  ]
+}

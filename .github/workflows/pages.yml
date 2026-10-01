@@ -1,0 +1,119 @@
+name: Publish to GitHub Pages
+
+# `node build.js` writes dist/trip-planner.html, and this workflow publishes that folder. The
+# artifact needs nothing to produce — one command, no bundler, no transformation (REQ-107) — so the
+# interesting part of this file is not the build. It is what surrounds it:
+#
+#   * The suite runs BEFORE the deploy, and a failure stops the deploy. The whole point of the
+#     artifact being one file is that a person can open it and trust it; a Pages site is the one
+#     place this app is served to somebody who did not build it, so it is the last place to publish
+#     a build the repository's own checks refuse.
+#   * `npm ci` is what enables the validator cross-check (test/schema-crosscheck.test.js). It skips
+#     cleanly without `ajv`, so the suite would still pass — which is exactly why the install is
+#     explicit here rather than left to chance: a skipped cross-check and a passing one look the
+#     same in the log.
+#   * The browser-driven tests skip on a runner with no Chrome. They report that as SKIPPED with a
+#     reason (test/browser.js), so the log says so rather than implying they ran.
+#   * `dist/` is in `.gitignore`, so the published bytes exist only for the duration of this run.
+
+on:
+  push:
+    branches: [main]
+  # So a branch that is not `main` can be published on purpose, by hand, without merging it.
+  workflow_dispatch:
+
+# The minimum the Pages deploy needs. `contents: read` is for the checkout; nothing here writes to
+# the repository, and nothing needs a token that could.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a newer push supersedes an older one still in flight. Publishing
+# two builds to the same URL in arrival order would leave the site showing the older one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `npm ci` (not `install`) so the cross-check runs against the locked reference implementation
+      # rather than whatever resolves today.
+      - name: Install the test-only dependency
+        run: npm ci
+
+      # The build refuses to write an artifact that fails any of its own static checks, so a red
+      # step here means a defect was caught before it could ship (REQ-109, REQ-111, REQ-112).
+      - name: Build
+        run: node build.js
+
+      - name: Test
+        run: node test/run.js
+
+      # Pages serves `index.html` at the site root, and the artifact's own root is a directory
+      # listing. Without this the likeliest URL anyone tries is a 404.
+      #
+      # A redirect, not a copy: `trip-planner.html` is a single self-contained file that must keep
+      # its own name and its own address, because that address is what a person bookmarks and what
+      # a link to this app points at.
+      #
+      # Relative, so it works at a project site (`/roadtrip-planner/`) and at a user site (`/`) with
+      # no base-path configuration — the artifact refers to nothing external, so there is nothing
+      # else for a base path to affect (ADR-0002).
+      - name: Add the site root
+        run: |
+          cat > dist/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <meta http-equiv="refresh" content="0; url=./trip-planner.html" />
+            <title>Trip Planner</title>
+          </head>
+          <body>
+            <p><a href="./trip-planner.html">Open the Trip Planner</a></p>
+          </body>
+          </html>
+          HTML
+
+      # A sanity check on what is actually being published, from the bytes on disk rather than from
+      # the build's own report: the deploy is the one step whose output nobody reviews before it is
+      # public.
+      - name: Check what will be published
+        run: |
+          set -euo pipefail
+          test -s dist/trip-planner.html
+          test -s dist/index.html
+          grep -q 'id="app-data"' dist/trip-planner.html
+          grep -q 'id="app-script"' dist/trip-planner.html
+          ls -la dist
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
