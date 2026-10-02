@@ -145,8 +145,11 @@ means running its code. Everything below follows from taking that seriously.
 - **Import is text-only**, always. Read as text, located by string scanning, never inserted into the DOM,
   never parsed as markup, never executed.
 - **The artifact has one origin.** Exactly one inline script, pinned by hash in a `script-src` policy,
-  and no external references of any kind — which is also why it works offline from a file. Any edit to
-  the program makes the policy stop matching, and the browser refuses to run it.
+  and no external references of any kind in its markup — which is also why it works offline from a
+  file. Any edit to the program makes the policy stop matching, and the browser refuses to run it.
+  The one exception is the *served* WebGPU transport, whose model library is a CDN module running on
+  WASM: the policy names `esm.run` and `cdn.jsdelivr.net` as script sources and allows WASM
+  compilation, or that transport could not load at all (`ADR-0020`).
 - **No merge over untrusted JSON.** Reconciliation compares histories by ancestry; it never deep-merges
   a file into your document. Divergence always asks.
 - **Patch path segments** `__proto__`, `constructor` and `prototype` are rejected before any path is

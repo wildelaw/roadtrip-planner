@@ -181,6 +181,7 @@ The `file://` boundary, styling preservation, and boot. Full design in `07-ui.md
 | `REQ-710` | It states that a hostile file writes its own policy, so **import-don't-open is the primary mitigation** and the CSP is secondary. | §5.9 | `review` |
 | `REQ-711` | Residual risks are enumerated: a hostile document can read every other document in the origin; authorship is forgeable; platform assumptions are unverified. | §10 | `review` |
 | `REQ-712` | Author names and emails live in every commit forever, and this is described as a disclosure obligation rather than a footnote. | §10 | `review` |
+| `REQ-713` | The policy's `script-src` names the hashed program, `'wasm-unsafe-eval'`, and a declared script-endpoint list (a subset of the declared connect endpoints), so the served WebGPU transport's dynamic module import and its WASM compilation are permitted. | `ADR-0020`, `02-architecture.md §7` | `static` |
 
 ## 8. Testing and traceability — `REQ-8xx`
 

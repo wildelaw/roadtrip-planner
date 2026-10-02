@@ -27,8 +27,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- 1. Policy first: it must precede every script it governs (REQ-105). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-{{policyHash}}'; style-src 'sha256-{{styleHash}}'; img-src data:; connect-src {{aiEndpoints}}; form-action 'none'; base-uri 'none'; frame-ancestors 'none';" />
+  <!-- 1. Policy first: it must precede every script it governs (REQ-105).
+
+       The hash pins the app's own inline script. The two CDN hosts and 'wasm-unsafe-eval' are what
+       let the served WebGPU transport load @mlc-ai/web-llm and compile its WASM runtime: a dynamic
+       `import()` is governed by script-src (not connect-src), and WebAssembly.instantiate needs
+       'wasm-unsafe-eval'. They are the one place code from another origin is admitted. This does
+       not relax rule 5 below — the artifact's own markup still carries no script `src` and no
+       `type="module"` (REQ-103, REQ-106). See build.js's SCRIPT_ENDPOINTS and ADR-0020. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-{{policyHash}}' 'wasm-unsafe-eval' {{scriptEndpoints}}; style-src 'sha256-{{styleHash}}'; img-src data:; connect-src {{aiEndpoints}}; form-action 'none'; base-uri 'none'; frame-ancestors 'none';" />
 
   <title>Trip Planner — {{tripTitle}}</title>
   <meta name="app-version" content="{{appVersion}}" />

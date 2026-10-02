@@ -41,6 +41,15 @@ subject to CORS, and an opaque origin sends `Origin: null`, which a CDN is entit
 | CORS — cloud and local endpoints both reject `Origin: null` | Yes |
 | Loading — the import may fail | Irrelevant; 1 and 2 already decide it |
 
+**What is already answered — the served case.** The *served* half of the loading question is answered
+and is not a platform question at all: it was a policy defect. With the old hash-only `script-src` the
+import was refused before any network request — Chrome: `Loading the script
+'https://esm.run/@mlc-ai/web-llm' violates … script-src 'sha256-…'` — because a dynamic `import()` is
+governed by `script-src`, not `connect-src`, and web-llm's WASM runtime additionally needs
+`'wasm-unsafe-eval'`. Both are now declared (`ADR-0020`, `REQ-713`), and the served artifact is covered
+by a browser test (`09-testing.md` §8). This question is only about the **opaque-origin (`file://`)**
+case, which remains unverified.
+
 **If the answer is "allowed".** The gate does not change. The result is recorded in the matrix
 (`09-testing.md` §5.1) and the AI stays off under `file://` for the other two reasons. The finding's
 only use is preventing a future contributor from removing the gate on the grounds that web-llm "works

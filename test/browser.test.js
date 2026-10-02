@@ -438,6 +438,49 @@ module.exports = {
     },
 
     {
+      name: 'the artifact’s own policy admits the WebGPU transport: the module host is a script source, and WASM compiles (REQ-713)',
+      run: async function () {
+        // The regression this exists for: the policy named the CDN only as a `connect-src`, but a
+        // dynamic `import()` is a script fetch governed by `script-src`, so the module was refused
+        // before any network request and the user saw "the model library could not be loaded from
+        // the CDN". The WASM half is the quieter second failure — web-llm runs on a WASM runtime,
+        // and a hash-only script-src refuses to compile it.
+        //
+        // Served, not `file://`: there the meta policy's enforcement is Q-3-uncertain and the AI is
+        // disabled anyway, so the assertion would pass vacuously. Compiling the empty module needs
+        // no network, so the suite stays hermetic — this downloads no model.
+        var server = await browser.serve();
+        var page = await browser.visit({ origin: server.origin });
+        try {
+          var out = await page.evaluate(function () {
+            var metas = Array.prototype.filter.call(document.querySelectorAll('meta'), function (m) {
+              return /Content-Security-Policy/.test(m.getAttribute('http-equiv') || '');
+            });
+            var policy = metas.length ? (metas[0].getAttribute('content') || '') : '';
+            var bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+            return WebAssembly.instantiate(bytes).then(function () {
+              return { policy: policy, compiled: true, error: '' };
+            }, function (e) {
+              return { policy: policy, compiled: false, error: String((e && e.message) || e) };
+            });
+          });
+
+          h.ok(/script-src [^;]*'wasm-unsafe-eval'/.test(out.policy),
+            'the policy does not allow WebAssembly compilation: ' + out.policy);
+          h.ok(/script-src [^;]*https:\/\/esm\.run/.test(out.policy),
+            'the policy does not name the module host as a script source: ' + out.policy);
+          h.ok(/script-src [^;]*https:\/\/cdn\.jsdelivr\.net/.test(out.policy),
+            'the policy does not name the redirect host as a script source: ' + out.policy);
+          h.ok(out.compiled,
+            'WebAssembly.instantiate was refused under the artifact’s own policy: ' + out.error);
+        } finally {
+          page.close();
+          await server.close();
+        }
+      },
+    },
+
+    {
       name: 'the compaction dialog keeps unreachable commits by default, and discards them only when asked twice',
       run: async function () {
         var server = await browser.serve();
