@@ -216,10 +216,11 @@ committed change.
 |---|---|
 | The meta CSP is the **first** element in `<head>`, before any script | `REQ-709` |
 | The app script is a pinned hash; there is exactly one inline script | `REQ-709` |
-| No inline `on*` handlers, no `eval`, no `new Function`, no dynamically created `<script>` | `REQ-710` |
+| No inline `on*` handlers, no `eval`, no `new Function`, no dynamically created `<script>`. The policy's `'wasm-unsafe-eval'` permits **WebAssembly compilation only** — the two JS constructs stay banned and swept for | `REQ-710`, `REQ-106` |
+| `script-src` is the hash plus `'wasm-unsafe-eval'` plus a declared `SCRIPT_ENDPOINTS` list (a subset of the connect list), so the WebGPU transport's module import and WASM runtime are permitted | `REQ-713` |
 | `connect-src` is a **build-time constant** | `02-architecture.md` §7 |
 
-Three things to state plainly rather than let a reader assume:
+Four things to state plainly rather than let a reader assume:
 
 1. **The policy cannot constrain the file's author** (`PAT-AP-10`). A hostile exporter rewrites it
    freely. It is a defence against *our* mistakes.
@@ -229,6 +230,15 @@ Three things to state plainly rather than let a reader assume:
 3. **Feature gating is behavioural, not policy-enforced.** `file://` disables AI by construction — the
    transport refuses — not by the CSP. A policy that tried to do this job would be doing it in the
    wrong layer, and would be rewritten by the first hostile exporter.
+4. **`script-src` names a third-party code origin, and that is a deliberate cost** (`ADR-0020`). The
+   in-browser model is a CDN module and runs on WASM, so the policy must admit `esm.run`,
+   `cdn.jsdelivr.net` and `'wasm-unsafe-eval'`; before `ADR-0020` it admitted none of them and the
+   served WebGPU transport was dead. The cost is that a future regression that creates
+   `<script src="https://cdn.jsdelivr.net/…">` would now execute where it previously could not — so
+   the layers that actually keep data from becoming a script element are the render seam
+   (`REQ-701`–`REQ-703`) and the banned-API sweep (`REQ-106`), *not* this policy. Note that the sweep
+   does not currently ban `document.createElement('script')`; the render seam is the operative
+   guard. This changes nothing about point 1: a hostile author rewrites the policy anyway.
 
 Point 2 has a consequence the spec accepts and records: a custom AI endpoint outside the declared list
 is blocked by the policy. That is `10-open-questions.md` Q-4.

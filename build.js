@@ -59,6 +59,28 @@ var AI_ENDPOINTS = [
   'https://raw.githubusercontent.com',
 ];
 
+// The SCRIPT hosts the policy admits, which become the host part of `script-src` (specs/02 §7).
+//
+// A dynamic `import()` of a module is governed by `script-src` (specifically `script-src-elem`),
+// NOT by `connect-src`. Listing the CDN only as a connect target is what silently broke the served
+// WebGPU transport: the module fetch was refused before any network request, and the console said
+// `script-src 'sha256-…'` while the policy looked, to a reader of this file, like it had already
+// allowed the CDN. WebAssembly compilation is governed by `script-src` too, which is why the
+// template carries the `'wasm-unsafe-eval'` keyword; without it web-llm's tvmjs runtime dies with a
+// `CompileError`.
+//
+// This is deliberately a SEPARATE list from `AI_ENDPOINTS`. Naming a host here means "code from
+// this origin may run inside our page", which is a stronger grant than "we may talk to it"; reusing
+// `AI_ENDPOINTS` would hand script rights to the Ollama hosts and to huggingface.co as well. The
+// build checks below that every script host is also a connect host, because the module a script
+// host loads still fetches its chunks and weights over `connect-src`.
+//
+// `esm.run` 301s to `cdn.jsdelivr.net`, and CSP checks the redirect target, so both must be named.
+var SCRIPT_ENDPOINTS = [
+  'https://esm.run',
+  'https://cdn.jsdelivr.net',
+];
+
 // ---- Small helpers ----
 
 function BuildError(message) {
@@ -388,7 +410,7 @@ function substitute(template, values) {
   }
 
   var required = ['styles', 'escapedJSON', 'concatenatedJS', 'tripTitle', 'appVersion', 'appHash',
-    'policyHash', 'styleHash', 'aiEndpoints'];
+    'policyHash', 'styleHash', 'aiEndpoints', 'scriptEndpoints'];
   required.forEach(function (name) {
     if (!seen[name]) {
       fail('The template never uses {{' + name + '}}, so the artifact would be missing it. A ' +
@@ -506,6 +528,7 @@ function main() {
     policyHash: escapeHtmlAttr(appHash),
     styleHash: escapeHtmlAttr(styleHash),
     aiEndpoints: escapeHtmlAttr(AI_ENDPOINTS.join(' ')),
+    scriptEndpoints: escapeHtmlAttr(SCRIPT_ENDPOINTS.join(' ')),
   });
 
   checkForbiddenApis(artifact);
@@ -519,9 +542,26 @@ function main() {
   if (artifact.indexOf('name="app-hash" content="' + runningHash + '"') === -1) {
     fail('The declared app hash does not match the program in the artifact.');
   }
-  if (artifact.indexOf("script-src 'sha256-" + appHash + "'") === -1) {
-    fail('The policy\'s script-src does not pin the program in the artifact, so the browser would ' +
-      'refuse to run it.');
+  // A script host that is not also a connect host is almost certainly a mistake: the module it
+  // loads fetches its chunks and weights over `connect-src` (specs/02 §7).
+  SCRIPT_ENDPOINTS.forEach(function (origin) {
+    if (AI_ENDPOINTS.indexOf(origin) === -1) {
+      fail('SCRIPT_ENDPOINTS names ' + origin + ', which is not in AI_ENDPOINTS. A module loaded ' +
+        'from a script host still needs that host reachable over connect-src.');
+    }
+  });
+
+  // The script-src is not just the hash any more: a dynamic import() is governed by script-src, and
+  // web-llm's WASM runtime needs 'wasm-unsafe-eval' (specs/02 §7, REQ-713, ADR-0020). A policy with
+  // the hash but without these is unable to load the served AI at all, and it fails silently — the
+  // module import just rejects. So the build compares the whole directive to the bytes it declared.
+  var expectedScriptSrc = "script-src 'sha256-" + appHash + "' 'wasm-unsafe-eval' " +
+    SCRIPT_ENDPOINTS.join(' ');
+  if (artifact.indexOf(expectedScriptSrc) === -1) {
+    fail('The policy\'s script-src is not the one this build declares. A dynamic import() of the ' +
+      'WebGPU module is governed by script-src (not connect-src), and WebAssembly.instantiate needs ' +
+      "'wasm-unsafe-eval'; without all of it the served AI cannot load. Expected:\n\n  " +
+      expectedScriptSrc);
   }
   if (artifact.indexOf("style-src 'sha256-" + styleHash + "'") === -1) {
     fail('The policy\'s style-src does not pin the stylesheet in the artifact, so the page would ' +
@@ -552,7 +592,8 @@ function main() {
   console.log('  style hash     sha256-' + styleHash);
   console.log('  container      ' + minted.commitStorage + ' root commit ' + minted.commitId.slice(0, 19) +
     '… (chain intact, ' + minted.chainChecked + ' commit)');
-  console.log('  policy         connect-src ' + AI_ENDPOINTS.join(' '));
+  console.log('  policy         script-src  ' + SCRIPT_ENDPOINTS.join(' ') + " 'wasm-unsafe-eval'");
+  console.log('                 connect-src ' + AI_ENDPOINTS.join(' '));
   console.log('Done.');
 }
 

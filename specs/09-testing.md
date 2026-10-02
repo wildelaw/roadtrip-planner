@@ -125,6 +125,7 @@ Each cell runs the same checklist:
 | 8 | Move or copy the file to a different folder and reopen — Firefox exercises the partitioned case; the explanation must appear | `REQ-615` |
 | 9 | Import a document someone else sent, and confirm the imported content is never executed | `REQ-501` |
 | 10 | Boot reports the storage mode in `#storage-status`, and the reconcile outcome | `REQ-612` |
+| 11 | Served: the WebGPU module imports and a WASM module compiles under the artifact's own policy — the browser-driven half of this check needs no network | `REQ-713` |
 
 Check 2 is the request's own requirement, and it is a matrix cell rather than a unit test because "the
 same file behaves differently in two environments" is a claim about the environments.
@@ -143,7 +144,7 @@ rule is that an unresolved cell is **recorded with a result per browser**, not l
 
 | Behaviour | Where |
 |---|---|
-| Whether a dynamic ESM import of a CDN module works from an opaque origin | Q-1 — the answer changes nothing (`07-ui.md` §3.3) but must be written down |
+| Whether a dynamic ESM import of a CDN module works from an opaque origin | Q-1 — the *served* case is now answered (a policy defect, fixed by `ADR-0020`/`REQ-713`); the opaque-origin case remains unverified, and its answer changes nothing (`07-ui.md` §3.3) |
 | Whether downloads are suppressed under `file://`, and in which configurations | Q-2 — changes which export exit is offered first |
 | Whether a `<meta>`-delivered CSP is enforced on `file://` | Q-3 — changes what the policy accomplishes |
 | Whether IndexedDB is reachable on this `file://` origin | Gates the migration (`REQ-411`) |
@@ -206,6 +207,7 @@ checked statically over the **built** file.
 | **One HTML file, self-contained** | `REQ-101`, `REQ-113`. One `<style>` element, no external stylesheet reference, no external script `src` |
 | **The app script is classic** | `REQ-103`. No `type="module"`, no local `src` |
 | **No inline `on*`, no `eval`, no `new Function`, no dynamic `<script>`** | `REQ-106` |
+| **`script-src` names the declared script endpoints and `'wasm-unsafe-eval'`; the served artifact actually compiles a WASM module under its own policy** | `REQ-713` |
 | **Byte-identical app code across exports** | `REQ-110`. The build concatenates and does not transform; a minifier would make the shipped code unauditable, which defeats `PAT-INV-08`'s purpose |
 | **App hash computed over the final bytes, and declared** | `REQ-111`. Export self-verification compares against it (`REQ-508`) |
 | **No unresolved `{{TOKEN}}` placeholder survives** | `REQ-109`. A literal `{{appHash}}` in a shipped file is a silent failure |

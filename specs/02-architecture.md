@@ -282,11 +282,11 @@ interesting happens. It is a correct boot for a hosted app and the wrong shape f
 
 ## 7. The policy
 
-`PATTERN.md` §5.9 layer 3, §11 P-1/P-2. Implements `REQ-105`, `REQ-112`, `REQ-708`.
+`PATTERN.md` §5.9 layer 3, §11 P-1/P-2. Implements `REQ-105`, `REQ-112`, `REQ-708`, `REQ-713`.
 
 ```
 default-src 'none';
-script-src  'sha256-{{policyHash}}';
+script-src  'sha256-{{policyHash}}' 'wasm-unsafe-eval' {{scriptEndpoints}};
 style-src   'sha256-{{styleHash}}';
 img-src     data:;
 connect-src {{aiEndpoints}};
@@ -295,7 +295,7 @@ base-uri    'none';
 frame-ancestors 'none';
 ```
 
-Three things must be stated plainly rather than implied:
+Four things must be stated plainly rather than implied:
 
 1. **The policy in the file cannot constrain the file's author.** An attacker authoring a hostile
    document writes the CSP meta tag themselves and permits their own script's hash. This is why the
@@ -303,10 +303,19 @@ Three things must be stated plainly rather than implied:
 2. **`connect-src` is a build-time constant**, taken from a declared `AI_ENDPOINTS` list, because a
    CSP is static bytes and cannot be computed from user configuration at runtime. The default list is
    the endpoints this app can actually be configured to use: the Ollama Cloud host, the local Ollama
-   origin, and the CDN the WebGPU transport imports from. **A user-supplied base URL or CORS proxy
+   origin, the WebGPU CDN, and the model-weight hosts. **A user-supplied base URL or CORS proxy
    outside that list cannot be covered by a static policy** — recorded as Q-4 in
    `10-open-questions.md`.
-3. **The policy is not the feature gate.** Under `file://` the AI subsystem is disabled
+3. **`script-src` is not only the hash.** The WebGPU transport loads `@mlc-ai/web-llm` with a runtime
+   `import()`, and **a dynamic module import is a script fetch, governed by `script-src` (specifically
+   `script-src-elem`), not by `connect-src`**. Naming the CDN only as a connect target — which is what
+   this policy did before `ADR-0020` — refuses the module before any network request, and the served
+   AI cannot load. So `script-src` also carries `'wasm-unsafe-eval'` (web-llm runs on a WASM runtime,
+   and `WebAssembly.instantiate` is governed by `script-src` too) and a declared `SCRIPT_ENDPOINTS`
+   list, kept **separate** from `AI_ENDPOINTS` because naming a script host grants it
+   code-execution rights inside our page, while naming a connect host grants only reachability.
+   `esm.run` 301s to `cdn.jsdelivr.net` and CSP checks the redirect target, so both hosts are named.
+4. **The policy is not the feature gate.** Under `file://` the AI subsystem is disabled
    *behaviourally* — the tab is not rendered and no code path reaches a fetch (`ADR-0015`). The
    policy's `connect-src` exists for the served case. Conflating the two would mean the same bytes
    could not serve both environments, which `REQ-606` requires.

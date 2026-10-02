@@ -104,6 +104,32 @@ function forbiddenComplaints(program) {
   return out;
 }
 
+// REQ-713: the script-src is not just the hash any more. A dynamic `import()` is governed by
+// script-src (specifically script-src-elem), NOT by connect-src, and web-llm's WASM runtime needs
+// 'wasm-unsafe-eval'. Naming the CDN only as a connect target was the defect that made the served
+// WebGPU transport fail with a content-policy error before it made any network request. Both hosts
+// must be named in script-src itself — and, because the module they load still fetches over
+// connect-src, in connect-src too. `esm.run` 301s to `cdn.jsdelivr.net`, and CSP checks the target.
+var SCRIPT_HOSTS = ['https://esm.run', 'https://cdn.jsdelivr.net'];
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function scriptPolicyComplaints(policy) {
+  var out = [];
+  if (!/script-src [^;]*'wasm-unsafe-eval'/.test(policy)) {
+    out.push("script-src does not allow WebAssembly compilation ('wasm-unsafe-eval')");
+  }
+  SCRIPT_HOSTS.forEach(function (host) {
+    if (!new RegExp('script-src [^;]*' + escapeRe(host)).test(policy)) {
+      out.push('script-src does not name ' + host);
+    }
+    if (!new RegExp('connect-src [^;]*' + escapeRe(host)).test(policy)) {
+      out.push('connect-src does not name ' + host);
+    }
+  });
+  return out;
+}
+
 // REQ-807: no test tooling, no development dependency, nothing that only exists in this repository.
 // Only markers that cannot appear in shipped code by accident: an earlier draft banned "chai" and
 // matched the word "chain" seventy times.
@@ -185,6 +211,10 @@ module.exports = {
         var policy = csp(p.markup);
         h.ok(/default-src 'none'/.test(policy), 'the policy does not default to denying everything');
         h.ok(/script-src 'sha256-[A-Za-z0-9+/=]+'/.test(policy), 'the policy does not pin the script by hash');
+        // REQ-713: and it must admit the WebGPU transport, or the served AI is dead on arrival.
+        var policyComplaints = scriptPolicyComplaints(policy);
+        h.deepEqual(policyComplaints, [],
+          'the policy does not admit the WebGPU transport: ' + policyComplaints.join('; '));
         h.ok(/style-src 'sha256-[A-Za-z0-9+/=]+'/.test(policy), 'the policy does not pin the stylesheet by hash');
         h.ok(/img-src data:/.test(policy), 'the policy does not allow inline images, which the app draws with');
         h.ok(/connect-src /.test(policy), 'the policy names no reachable endpoint at all, so the AI could never work');
@@ -194,6 +224,20 @@ module.exports = {
         // The policy must precede the first script, or it governs nothing (REQ-105).
         h.ok(p.file.indexOf('Content-Security-Policy') < p.file.indexOf('<script'),
           'the policy comes after the first script, so it was not in force when that script ran');
+
+        // And the transport rule would be caught, or the assertion above is false comfort. A
+        // hash-only policy, one missing 'wasm-unsafe-eval', and one missing a host each provoke a
+        // complaint; a policy that names the hosts only as connect targets still complains.
+        h.ok(scriptPolicyComplaints("default-src 'none'; script-src 'sha256-x'; connect-src https://esm.run https://cdn.jsdelivr.net").length >= 3,
+          'the transport rule did not fire on a hash-only policy that names the CDN only as a connect target');
+        h.ok(scriptPolicyComplaints("script-src 'sha256-x' https://esm.run https://cdn.jsdelivr.net; connect-src https://esm.run https://cdn.jsdelivr.net").length === 1,
+          "the transport rule did not fire on a policy missing 'wasm-unsafe-eval'");
+        h.ok(scriptPolicyComplaints("script-src 'sha256-x' 'wasm-unsafe-eval' https://esm.run; connect-src https://esm.run").length >= 2,
+          'the transport rule did not fire on a policy missing one of the two CDN hosts');
+        h.deepEqual(scriptPolicyComplaints(
+          "script-src 'sha256-x' 'wasm-unsafe-eval' https://esm.run https://cdn.jsdelivr.net; " +
+          'connect-src https://esm.run https://cdn.jsdelivr.net'), [],
+          'the transport rule fires on a correct policy');
       },
     },
 
