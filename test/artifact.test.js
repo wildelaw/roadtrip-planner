@@ -218,6 +218,13 @@ module.exports = {
         h.ok(/style-src 'sha256-[A-Za-z0-9+/=]+'/.test(policy), 'the policy does not pin the stylesheet by hash');
         h.ok(/img-src data:/.test(policy), 'the policy does not allow inline images, which the app draws with');
         h.ok(/connect-src /.test(policy), 'the policy names no reachable endpoint at all, so the AI could never work');
+        // And the same class of bug as the script host, one directive over: `huggingface.co` does not
+        // serve the weights, it 302s each file to a CDN it picks, and CSP checks every redirect hop.
+        // Naming only the resolve host downloads nothing — the weights are blocked one hop later.
+        ['https://huggingface.co', 'https://*.hf.co', 'https://*.huggingface.co'].forEach(function (host) {
+          h.ok(new RegExp('connect-src [^;]*' + escapeRe(host)).test(policy),
+            'connect-src does not name ' + host + ', so the model weights are blocked at the redirect: ' + policy);
+        });
         h.ok(/form-action 'none'/.test(policy), 'the policy allows form submissions');
         h.ok(/base-uri 'none'/.test(policy), 'the policy allows a base URI, which would rewrite every relative reference');
         h.ok(/frame-ancestors 'none'/.test(policy), 'the policy allows the document to be framed');

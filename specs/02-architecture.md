@@ -305,7 +305,11 @@ Four things must be stated plainly rather than implied:
    the endpoints this app can actually be configured to use: the Ollama Cloud host, the local Ollama
    origin, the WebGPU CDN, and the model-weight hosts. **A user-supplied base URL or CORS proxy
    outside that list cannot be covered by a static policy** — recorded as Q-4 in
-   `10-open-questions.md`.
+   `10-open-questions.md`. The model-weight entry is necessarily a wildcard pair — `https://*.hf.co`
+   and `https://*.huggingface.co` — because `huggingface.co` 302s each `resolve` request to a CDN it
+   chooses (today the Xet bridge at `us.aws.cdn.hf.co`, previously `cdn-lfs*.huggingface.co`), and CSP
+   checks every redirect hop. Naming only `huggingface.co` downloads nothing: the weights are blocked
+   one hop later.
 3. **`script-src` is not only the hash.** The WebGPU transport loads `@mlc-ai/web-llm` with a runtime
    `import()`, and **a dynamic module import is a script fetch, governed by `script-src` (specifically
    `script-src-elem`), not by `connect-src`**. Naming the CDN only as a connect target — which is what
