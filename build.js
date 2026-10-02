@@ -50,12 +50,21 @@ var ROOT_MESSAGE = 'Start this document';
 // the list of hosts this app can be configured to reach, fixed here. A base URL or CORS proxy a
 // user types in that is not on this list cannot be covered by a static policy — that limitation
 // is recorded as Q-4 in specs/10-open-questions.md, and stated in the settings UI.
+//
+// Two of the entries are wildcards because the host is not ours to fix: `huggingface.co` does not
+// serve the weights itself — it 302s `/<repo>/resolve/<rev>/<file>` to a CDN it chooses, and CSP
+// checks every redirect hop. Today that CDN is the Xet bridge at `us.aws.cdn.hf.co` (older files go
+// to `cdn-lfs*.huggingface.co`), and the region and subdomain are Hugging Face's to change. A
+// `connect-src` that names only `huggingface.co` therefore downloads nothing at all — the weights
+// are blocked one hop later, which is exactly how this list came to be widened.
 var AI_ENDPOINTS = [
   'https://ollama.com',              // Ollama Cloud: chat, web_search, web_fetch
   'http://localhost:11434',          // a local Ollama, when the browser is told to allow it
   'https://esm.run',                 // where the WebGPU transport imports @mlc-ai/web-llm from
   'https://cdn.jsdelivr.net',        // where esm.run resolves to, and where its chunks live
-  'https://huggingface.co',          // the model weights the WebGPU runtime downloads
+  'https://huggingface.co',          // the model resolve API the WebGPU runtime asks for weights
+  'https://*.hf.co',                 // where huggingface.co redirects them (Xet: us.aws.cdn.hf.co)
+  'https://*.huggingface.co',        // the legacy LFS CDN (cdn-lfs[-us-1|-eu-1].huggingface.co)
   'https://raw.githubusercontent.com',
 ];
 

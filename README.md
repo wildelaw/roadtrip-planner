@@ -149,7 +149,8 @@ means running its code. Everything below follows from taking that seriously.
   file. Any edit to the program makes the policy stop matching, and the browser refuses to run it.
   The one exception is the *served* WebGPU transport, whose model library is a CDN module running on
   WASM: the policy names `esm.run` and `cdn.jsdelivr.net` as script sources and allows WASM
-  compilation, or that transport could not load at all (`ADR-0020`).
+  compilation, or that transport could not load at all (`ADR-0020`). It also names Hugging Face's
+  download CDN, because `huggingface.co` redirects each weight file to a host it chooses.
 - **No merge over untrusted JSON.** Reconciliation compares histories by ancestry; it never deep-merges
   a file into your document. Divergence always asks.
 - **Patch path segments** `__proto__`, `constructor` and `prototype` are rejected before any path is
