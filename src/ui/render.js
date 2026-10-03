@@ -237,7 +237,11 @@ TP.ui.render = (function () {
   // The subset is deliberate and small — paragraphs, bullets, headings, bold, italic, code, links.
   // Anything unrecognised stays literal text, which is the safe direction to fail in.
 
-  var INLINE_PATTERN = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>()]+)/g;
+  // The inline pattern as SOURCE, compiled fresh inside `inline` below — deliberately NOT one
+  // shared `g` regex. `inline` recurses (bold and italic), and a shared `lastIndex` across that
+  // recursion is an infinite loop rather than a subtlety; the comment in `inline` says why.
+  var INLINE_SOURCE =
+    '(\\*\\*[^*]+\\*\\*|__[^_]+__|\\*[^*\\n]+\\*|_[^_\\n]+_|`[^`]+`|\\[[^\\]]+\\]\\([^)\\s]+\\)|https?:\\/\\/[^\\s<>()]+)';
   var BULLET = /^\s*[-*+]\s+(.*)$/;
   var HEADING = /^\s*(#{1,6})\s+(.*)$/;
 
@@ -288,8 +292,18 @@ TP.ui.render = (function () {
     var nodes = [];
     var last = 0;
     var m;
-    INLINE_PATTERN.lastIndex = 0;
-    while ((m = INLINE_PATTERN.exec(s)) !== null) {
+    // A pattern PER CALL, not one shared instance. `inlineToken` below recurses back into `inline`
+    // for bold and italic, and a shared `g` regex cannot survive that: the inner call sets
+    // `lastIndex = 0` on entry and the spec resets it to 0 again when its own `exec` fails, so the
+    // OUTER loop resumes from 0, re-matches the token it just consumed, and pushes another node.
+    // `m.index > last` is then false, so no text is added and nothing advances: the loop spins
+    // forever, allocating a `<strong>`/`<em>` subtree per turn until the tab is out of memory.
+    //
+    // That is not hypothetical — it is what shipped. Any assistant message containing `**bold**` or
+    // `*italic*` (a cloud model emits both constantly) froze the browser at ~32 GB. `code` and links
+    // were unaffected because those branches do not recurse, which is why only some messages hung.
+    var pattern = new RegExp(INLINE_SOURCE, 'g');
+    while ((m = pattern.exec(s)) !== null) {
       if (m.index > last) nodes.push(text(s.slice(last, m.index)));
       var node = inlineToken(m[0]);
       if (node) nodes.push(node);
