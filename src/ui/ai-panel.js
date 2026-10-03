@@ -124,6 +124,50 @@ TP.ui.aiPanel = (function () {
     host.scrollTop = host.scrollHeight;
   }
 
+  // Copy a message as it was WRITTEN, not as it was rendered.
+  //
+  // Assistant text reaches the page as DOM (REQ-701) — a `<strong>` where the model wrote `**bold**`,
+  // an `<a>` where it wrote `[label](url)` — so selecting the bubble and copying gives the rendered
+  // text, with the markup gone and a link's target with it. `m.content` is still the markdown the
+  // model sent, and this is what hands that over instead.
+  //
+  // Both parties' messages carry the button. A prompt is worth being able to lift back out, and it
+  // copies exactly what was typed, so the same control is correct for both.
+  function copyButton(content) {
+    return r().button('Copy', function (e) { copy(e.currentTarget, content); }, {
+      class: 'btn btn--ghost btn--sm ml-auto',
+      attrs: { 'aria-label': 'Copy this message', title: 'Copy this message as markdown' },
+    });
+  }
+
+  // The label line above a bubble, with the copy button at its right edge.
+  function roleRow(label, content) {
+    return r().el('div', { class: 'msg__role' }, [
+      r().el('span', { text: label }),
+      copyButton(content),
+    ]);
+  }
+
+  // `copyToClipboard` resolves rather than rejecting, including when the browser refuses — and what
+  // it resolves to is a sentence saying what to do by hand, so that is shown rather than swallowed.
+  // Success is reported on the button itself, where the person is already looking; a toast would be
+  // a second report of one action. (`trip-editor.js` toasts on both, but its copy lives in a dialog
+  // that closes, so there a toast is the only place left to say it.)
+  //
+  // The transient label is per-render: `renderTranscript` rebuilds every row on each push, so a
+  // `Copied` can be replaced by a fresh `Copy` while a run is still going. That is the correct end
+  // state, and the timer left over from the old button then writes to a node no longer in the
+  // document, which does nothing.
+  function copy(button, content) {
+    var text = content == null ? '' : String(content);
+    return TP.io.export.copyToClipboard(text).then(function (res) {
+      if (!res.ok) { TP.ui.toast.warn(res.reason); return res; }
+      r().mount(button, 'Copied');
+      setTimeout(function () { r().mount(button, 'Copy'); }, 1200);
+      return res;
+    });
+  }
+
   function messageNode(m) {
     if (m.kind === 'tool' || m.role === 'tool') {
       return r().el('div', { class: 'toolline', text: m.content });
@@ -133,13 +177,13 @@ TP.ui.aiPanel = (function () {
     }
     if (m.role === 'user') {
       return r().el('div', { class: 'msg msg--user' }, [
-        r().el('div', { class: 'msg__role', text: 'You' }),
+        roleRow('You', m.content),
         r().el('div', { class: 'bubble', text: m.content }),
       ]);
     }
     // Assistant text is markdown, and it becomes NODES — never a string that turns into markup.
     return r().el('div', { class: 'msg msg--assistant' }, [
-      r().el('div', { class: 'msg__role', text: 'Agent' }),
+      roleRow('Agent', m.content),
       r().el('div', { class: 'bubble' }, [r().markdown(m.content || '')]),
     ]);
   }

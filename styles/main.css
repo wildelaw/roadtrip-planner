@@ -141,7 +141,10 @@ table.data th { color: var(--muted); font-weight: 600; }
 .bubble { padding: 10px 12px; border-radius: 12px; background: #fff; border: 1px solid var(--border); }
 .msg--user .bubble { background: var(--primary); color: #fff; border-color: var(--primary); }
 .msg--assistant .bubble { background: #fff; }
-.msg__role { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+/* The label above a bubble, with the message's Copy button at its right edge. A flex row because
+   of that button; the label itself is an 11px muted span and the button is pushed across by the
+   `ml-auto` utility, the same one the panel's head uses. */
+.msg__role { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
 .bubble p { margin: 0 0 8px; }
 .bubble p:last-child { margin-bottom: 0; }
 .bubble a { color: inherit; }
