@@ -198,13 +198,14 @@ write into the payload. Each earns a rule.
 | **No AI from `file://`, enforced below the UI** | `ai/transport.js` refuses when `!env.aiEnabled`, so no code path reaches `fetch` or the CDN `import()` even if a UI guard is bypassed (`REQ-708`) |
 | **Credentials are never in the document** | The container omits per-user state (`REQ-211`); conversations and settings stay app-local (`REQ-410`) |
 | **AI output is data, and is validated** | Tool results pass the same validators as an imported file (`06-interchange.md` §7) before they reach the model |
-| **Nothing the AI produces is committed without confirmation** | `PAT-DEC-06`'s rule, applied: suggestions may be pre-selected, but a commit is a user action |
+| **The agent writes only when the person asked it to, and only into the trip** | A run is started from the panel, and every tool goes through `store.edit`, so the whole run lands as ONE commit the user can undo (`PAT-DEC-06`'s spirit, applied to a run rather than a suggestion). The agent may add, update and remove **records** within an allowlist of collections; it can never touch days, items, key tips, checklists, travelers, the vehicle or the destinations. A removal edits the working payload and commits forward, so the history stays append-only (`ADR-0021`) |
 | **Fetched web content is hostile input** | `web_search` / `web_fetch` results are attacker-controlled text. They are shown as text, never executed, and never treated as instructions to the application |
 
 The last row is the one worth naming: a document the agent reads may contain text designed to steer it.
-The defence is structural rather than clever — the agent's output is *data* that must pass a validator
-and a user's confirmation, so a successful injection produces a suggestion the user declines, not a
-committed change.
+The defence is structural rather than clever — the agent's output is *data* that must pass a validator,
+and everything it writes lands as one commit the person can undo, so a successful injection produces a
+change that is visible and revertible rather than a silent one. A removal is scoped by the allowlist and
+commits forward, so an injection cannot reach the trip's days and cannot erase what the history holds.
 
 ---
 
