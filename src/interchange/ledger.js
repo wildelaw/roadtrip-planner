@@ -78,9 +78,10 @@ TP.ledger = (function () {
     { field: 'item.currency', json: M, ical: D },
     { field: 'item.durationMin', json: M, ical: F, note: 'Folded into DTEND − DTSTART' },
     { field: 'item.confirmation', json: M, ical: F, note: 'Folded into DESCRIPTION as a leading `Confirmation: …` line, so a note whose own first line reads that way is read as one on the way back in' },
+    { field: 'item.link', json: M, ical: M, note: '`URL` in the calendar, and carried only when the value is already an absolute URL this app would use verbatim. The link field takes any text and a `URL` property must be a URI (§3.2), so a value that is not one stays on the item — `trip-data.json` keeps it, the calendar does not carry it' },
     { field: 'item.notes', json: M, ical: M, note: '`desc` on the wire; `DESCRIPTION` in the calendar' },
     { field: 'item.flags', json: M, ical: D, note: 'The flag keys (charge, overnight, tour, warn, minSoc, minSocCritical). Disclosed. Unrepresentable in a calendar' },
-    { field: 'item.x.iCal', json: M, ical: P, note: 'Unmodelled VEVENT properties: VALARM, RRULE, ORGANIZER, SEQUENCE, STATUS, GEO, CATEGORIES, URL, CLASS, TRANSP, PRIORITY, CREATED, LAST-MODIFIED. ATTENDEE is NOT here: it is folded into trip.travelers[] and written back from the model, so bagging it as well would put two on one event' },
+    { field: 'item.x.iCal', json: M, ical: P, note: 'Unmodelled VEVENT properties: VALARM, RRULE, ORGANIZER, SEQUENCE, STATUS, GEO, CATEGORIES, CLASS, TRANSP, PRIORITY, CREATED, LAST-MODIFIED. ATTENDEE is NOT here: it is folded into trip.travelers[] and written back from the model, so bagging it as well would put two on one event. URL is not here either: `item.link` is a field of the model, so a URL goes to the URL line rather than to the bag' },
     { field: 'item.x.tripDataJson', json: P, ical: D, note: '[extension] item-level wire fields the model does not name' },
   ];
 
@@ -88,14 +89,14 @@ TP.ledger = (function () {
   // copy those fields verbatim — so the rows below are as coarse as the spec’s table, with a finer
   // row only where the spec itself writes an "M / D" slash.
   var COLLECTIONS = [
-    { field: 'lodging[]', json: M, ical: D, note: 'All six fields. Disclosed. A lodging stay is not an itinerary entry in this model' },
+    { field: 'lodging[]', json: M, ical: D, note: 'All seven fields. Disclosed. A lodging stay is not an itinerary entry in this model' },
     { field: 'reservations[]', json: M, ical: D, note: 'All eight trip-data.json fields. Disclosed' },
     { field: 'reservations[].done', json: M, ical: D, note: 'On the wire `done: false` is written as an absent key; both mean not done' },
     { field: 'noReservationNeeded[]', json: M, ical: D, note: 'Both fields. Disclosed' },
     { field: 'preTripActions[]', json: M, ical: D, note: 'All four fields. Disclosed' },
     { field: 'preTripActions[].done', json: M, ical: D, note: 'Same convention as reservations: false is written as an absent key' },
     { field: 'bucketList[]', json: M, ical: D, note: 'All three fields. Disclosed' },
-    { field: 'chargingNetworks[]', json: M, ical: D, note: 'All five fields. Disclosed' },
+    { field: 'chargingNetworks[]', json: M, ical: D, note: 'All six fields. Disclosed' },
     { field: 'minSocThresholds[]', json: M, ical: D, note: 'All six fields. Disclosed' },
     { field: 'locations[]', json: M, ical: D, note: 'All eight fields including the nested activities[]. Disclosed' },
     { field: 'contacts[]', json: M, ical: D, note: 'Both fields. Disclosed' },

@@ -819,6 +819,133 @@ module.exports = {
     },
 
     {
+      // The fields a PANEL writes, rather than the fields a file carries.
+      //
+      // `tripdatajson` is a closed field list: it writes the fields its key tables name and nothing
+      // else. So a field the UI writes straight onto a model row that no table names is destroyed on
+      // export without a word. Three were — `lodging[].confirmation`, `chargingNetworks[].notes` and
+      // `item.link` — and this test is the one that would have caught them, but only because the
+      // corpus above now populates them. P9 could not ask the question before: `maximalTrip` and
+      // `randomTrip` were written from the key tables, so the corpus and the mapper agreed because
+      // they were the same list.
+      //
+      // The values are written the way a panel writes them, as plain properties on the row and not
+      // through a bag, which is the shape `setCell` produces. These five names are the CONTRACT the
+      // panels have to use; whether they actually use them is not a question this file can ask,
+      // because the UI is not in the pure prefix it loads — `artifact.test.js` reads the panel specs
+      // out of the built program and checks each key against these same tables. The two tests are
+      // halves of one rule, which is why neither is written as if it were the whole of it.
+      name: 'a field a panel writes is a field the wire carries',
+      run: function () {
+        var TP = h.pure().TP;
+        var trip = h.maximalTrip(TP, 'X');
+
+        // Exactly the fields the panels write, at the names they write them. A rename in the UI that
+        // the wire did not follow fails here rather than in a person's file.
+        trip.lodging[0].confirmation = 'ABC123';
+        trip.chargingNetworks[0].nacsAdapter = true;
+        trip.chargingNetworks[0].notes = 'two stalls, one broken';
+        trip.expenses[0].label = 'Coffee and a pastry';
+        trip.days[0].items[0].link = 'https://example.invalid/museum';
+        trip = TP.model.normalize(trip, trip.docId);
+
+        var checks = [
+          ['lodging[0].confirmation', 'ABC123'],
+          ['chargingNetworks[0].nacsAdapter', true],
+          ['chargingNetworks[0].notes', 'two stalls, one broken'],
+          ['expenses[0].label', 'Coffee and a pastry'],
+          ['days[0].items[0].link', 'https://example.invalid/museum'],
+        ];
+        // All five survive `trip-data.json`. The calendar carries only the item's link: a lodging
+        // stay, a charging network and an expense are not VEVENTs here, which is the `D` the ledger
+        // already discloses for those collections — checked by P11 over the whole corpus, so it is
+        // named here rather than re-asserted.
+        var back = tripOf(TP, 'json', wireOf(TP, 'json', trip));
+        checks.forEach(function (pair) {
+          var kept = h.getPath(back, pair[0]);
+          h.equal(kept, pair[1], 'trip-data.json: ' + pair[0] + ' was written as ' + JSON.stringify(pair[1]) +
+            ' and came back as ' + JSON.stringify(kept));
+        });
+        var onCalendar = tripOf(TP, 'ical', wireOf(TP, 'ical', trip));
+        h.equal(h.getPath(onCalendar, 'days[0].items[0].link'), 'https://example.invalid/museum',
+          'the item link did not survive the calendar');
+      },
+    },
+
+    {
+      // The other half of naming a bagged field, and the reason `dropBag` exists at all.
+      //
+      // A document written before this generation named `lodging[].confirmation` holds that value in
+      // the entity's bag — the model IS the committed payload, so the bag is in the file a person
+      // already has. `emitUnknown` writes the bag AFTER the named fields, so on the first edit the
+      // stale copy silently overwrites what the person just typed: the file reverts the correction
+      // made to it. `fromEntity` drops the bag member once the field it stands in for is present,
+      // which is the same rule `minSocRaw` and `nacsAdapterRaw` follow.
+      name: 'a stale bag member does not overwrite the value a person just typed',
+      run: function () {
+        var TP = h.pure().TP;
+        var trip = TP.model.newTrip({ title: 'Upgraded', docId: TP.uid() });
+        trip.lodging = [{
+          id: 'L1',
+          location: 'Hotel X',
+          checkIn: '2026-09-01',
+          // What an older build left behind: the value it could not name, in the bag.
+          x: { tripDataJson: { confirmation: 'OLD-ABC123' } },
+        }];
+        h.equal(trip.lodging[0].confirmation, undefined, 'the fixture already has a plain confirmation');
+
+        // The person opens the panel and corrects it. This is what `setCell` writes.
+        trip.lodging[0].confirmation = 'NEW-EDITED';
+        var wire = wireOf(TP, 'json', trip);
+        h.equal(wire.lodging[0].confirmation, 'NEW-EDITED',
+          'the bagged value overwrote the edit: the file says ' + JSON.stringify(wire.lodging[0].confirmation) +
+          ' and the person typed "NEW-EDITED"');
+        h.equal(JSON.stringify(wire.lodging[0]).indexOf('OLD-ABC123'), -1,
+          'the stale value is still somewhere on the wire: ' + JSON.stringify(wire.lodging[0]));
+
+        // And with no edit at all the bagged value is still the one written, so a document that
+        // predates this generation is not emptied by opening it.
+        var untouched = TP.model.normalize({
+          title: 'Upgraded', docId: TP.uid(),
+          lodging: [{ id: 'L1', location: 'Hotel X', x: { tripDataJson: { confirmation: 'OLD-ABC123' } } }],
+        }, 'doc-1');
+        h.equal(wireOf(TP, 'json', untouched).lodging[0].confirmation, 'OLD-ABC123',
+          'a confirmation only the bag holds was dropped rather than written back');
+      },
+    },
+
+    {
+      // A `URL` property is a URI and a link is free text, so the mapper writes one only when the two
+      // are the same thing. This is the guard that keeps the app's own export re-importable: an
+      // item whose link is prose or a `javascript:` URL must not put a URL line on the calendar for
+      // this app's validator to refuse.
+      name: 'item.link reaches the calendar only when it is a URL, and never becomes an invalid one',
+      run: function () {
+        var TP = h.pure().TP;
+        var trip = h.maximalTrip(TP, 'X');
+        trip.days[0].items[0].link = 'https://example.invalid/museum';
+        h.ok(/^URL:https:\/\/example\.invalid\/museum$/m.test(wireOf(TP, 'ical', trip)),
+          'a link that is a URL was not written as one:\n' +
+          h.truncate(wireOf(TP, 'ical', trip), 600));
+
+        ['the museum website', 'javascript:alert(1)', '', 'www.example.com'].forEach(function (link) {
+          var t = h.maximalTrip(TP, 'X');
+          t.days[0].items[0].link = link;
+          t = TP.model.normalize(t, t.docId);
+          var text = wireOf(TP, 'ical', t);
+          h.equal(/^URL:/m.test(text), false,
+            'the link ' + JSON.stringify(link) + ' was written into a URL property, which must be a URI');
+          // The export is still a calendar this app will re-import, which is the point of declining.
+          h.equal(TP.validators.check('ical', text).ok, true,
+            'our own export of a trip with the link ' + JSON.stringify(link) + ' is refused by our own validator');
+          // And nothing is lost: the value is still on the item and still on the JSON wire.
+          h.equal(wireOf(TP, 'json', t).days[0].items[0].link, link || undefined,
+            'declining the calendar lost the link from trip-data.json too');
+        });
+      },
+    },
+
+    {
       // REQ-809. The ledger is complete: every field path the model can emit is classified for at
       // least one of the two formats. This is the check that catches a field added to the model and
       // forgotten in the ledger — the failure mode PATTERN.md §8.1 step 3 exists to prevent — and it

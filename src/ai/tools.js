@@ -111,6 +111,7 @@ TP.ai.tools = (function () {
       checkIn: { type: 'string', description: 'YYYY-MM-DD' },
       checkOut: { type: 'string' },
       area: { type: 'string' },
+      confirmation: { type: 'string', description: 'The booking reference, if the person has one.' },
       notes: { type: 'string' },
     }, ['location']),
     fn('add_reservation', 'Record something that needs booking, with a deadline and how to book it.', {
@@ -169,7 +170,7 @@ TP.ai.tools = (function () {
       date: { type: 'string' },
       category: { type: 'string' },
       amount: { type: 'number' },
-      item: { type: 'string' },
+      label: { type: 'string', description: 'What the money was for.' },
     }, ['amount', 'category']),
     // `match` and `patch` are deliberately free-form objects. The identifying fields differ per
     // collection (`location` for lodging, `what` for a reservation, `name` for a location), and a

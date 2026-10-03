@@ -140,6 +140,14 @@ function randomTrip(TP, gen) {
   // Inside the fold's documented limits, so that the fold is exact rather than the assertion being
   // loose: no line break, no padding, never empty. Each fold's limits are stated in the ledger.
   function foldable() { return gen.word().replace(/[\r\n]+/g, ' ').trim() || 'text'; }
+  // A value for `item.link`, which a calendar carries as a `URL` property and a `URL` must be a URI
+  // (`06-interchange.md` §3.2). `foldable()` is not one: the mapper declines to write a link the
+  // calendar cannot honestly carry, so a generator that put a bare word here would be handing the
+  // model a value no calendar can hold and then failing the round trip on it — the same trap the
+  // comment on `type` below describes. `encodeURIComponent` keeps it inside the URI grammar whatever
+  // `gen.word` produces, and leaves no comma, backslash or line break for the escaping to rewrite, so
+  // the value is a fixed point through both wires.
+  function url() { return 'https://example.invalid/' + encodeURIComponent(foldable()); }
   var dayCount = 1 + gen.int(4);
   trip.days = [];
   for (var i = 0; i < dayCount; i++) {
@@ -186,6 +194,7 @@ function randomTrip(TP, gen) {
       if (gen.next() < 0.5) item.cost = gen.int(400);
       if (gen.next() < 0.3) item.location = gen.word();
       if (gen.next() < 0.3) item.confirmation = foldable();
+      if (gen.next() < 0.3) item.link = url();
       if (gen.next() < 0.3) item.durationMin = 15 + gen.int(120);
       if (gen.next() < 0.3) item.flags = { charge: true };
       day.items.push(item);
@@ -227,8 +236,12 @@ function randomTrip(TP, gen) {
       x: { iCal: { EMAIL: 'traveler@example.invalid' } },
     });
   }
-  trip.lodging = [{ id: TP.uid(), location: gen.word(), checkIn: '2026-09-01', checkOut: '2026-09-03', area: gen.word() }];
+  trip.lodging = [{ id: TP.uid(), location: gen.word(), checkIn: '2026-09-01', checkOut: '2026-09-03', area: gen.word(), confirmation: foldable() }];
   trip.reservations = [{ id: TP.uid(), what: gen.word(), when: gen.word(), cost: gen.int(200), done: gen.next() < 0.5 }];
+  // A NACS adapter and a note, both of which the Charging panel writes. They are here because the
+  // generator is what makes `interchange.test.js`'s round-trip claim mean anything: a field the
+  // corpus never sets is a field the check cannot ask about.
+  trip.chargingNetworks = [{ id: TP.uid(), name: gen.word(), location: gen.word(), network: gen.word(), nacsAdapter: true, notes: foldable() }];
   trip.expenses = [{ id: TP.uid(), date: '2026-09-01', category: gen.word() || 'General', amount: gen.int(300), label: gen.word() }];
   trip.criticalAlerts = [{ id: TP.uid(), severity: gen.pick(['info', 'warn', 'critical']), title: gen.word(), text: gen.word() }];
   return TP.model.normalize(trip, trip.docId);
@@ -299,17 +312,18 @@ function maximalTrip(TP, value) {
       currency: 'EUR',
       durationMin: 45,
       confirmation: v,
+      link: 'https://example.invalid/' + encodeURIComponent(v),
       notes: v,
       flags: { charge: true, overnight: true, tour: true, warn: true, minSoc: 20, minSocCritical: true },
       x: { tripDataJson: { itemNote: v }, iCal: { VALARM: v, RRULE: v } },
     }],
   }];
-  trip.lodging = [{ id: TP.uid(), location: v, checkIn: '2026-09-01', checkOut: '2026-09-02', area: v, notes: v }];
+  trip.lodging = [{ id: TP.uid(), location: v, checkIn: '2026-09-01', checkOut: '2026-09-02', area: v, notes: v, confirmation: v }];
   trip.reservations = [{ id: TP.uid(), what: v, when: v, duration: v, cost: 5, howToBook: v, bookBy: v, priority: v, done: true }];
   trip.noReservationNeeded = [{ id: TP.uid(), what: v, notes: v }];
   trip.preTripActions = [{ id: TP.uid(), text: v, category: v, priority: v, done: true }];
   trip.bucketList = [{ id: TP.uid(), name: v, date: '2026-09-01', dateLabel: v }];
-  trip.chargingNetworks = [{ id: TP.uid(), name: v, location: v, network: v, nacsAdapter: true }];
+  trip.chargingNetworks = [{ id: TP.uid(), name: v, location: v, network: v, nacsAdapter: true, notes: v }];
   trip.minSocThresholds = [{ id: TP.uid(), day: v, leg: v, minSoc: 15, reason: v, severity: 'warn' }];
   trip.locations = [{
     id: TP.uid(),

@@ -168,6 +168,194 @@ function authoringOnlyComplaints(file) {
   return out;
 }
 
+// REQ-809's other half, and the one the ledger cannot do on its own.
+//
+// `tripdatajson` writes a closed list of fields. A panel that writes a key no table names has its
+// edits destroyed on export, silently — `lodging[].confirmation` and `chargingNetworks[].notes`
+// simply vanished, and the "Adapter needed" checkbox wrote `adapter` where the wire says
+// `nacsAdapter`, so it had never once persisted in any version of this app. `interchange.test.js`
+// pins the NAMES the wire must carry; only something that reads the panels can say whether the
+// panels use them, and the panels are not in the pure prefix that file loads.
+//
+// This reads the shipped program, which is the point: a spec is checked as it ships, not as it sits
+// in a fragment the build might have skipped. The tables it checks against come from the pure
+// realm, which is the same `COLLECTION_KEYS` object the mapper consults at run time.
+//
+// The extractors are deliberately narrow. A general "which fields does this code write?" analysis is
+// not available here, so this covers the two shapes where every instance of the bug so far has
+// lived: a `collectionCard` spec (its `key`, its `blank()` row and its `columns`), and a
+// `cellInput(collection, id, field, …)` cell. Anything else it cannot see is not covered by it, and
+// the test does not pretend otherwise.
+// A tiny reader for object literals: enough to say which properties a spec declares, and no more.
+// It is not a parser and must never be asked to be one — a fragment it cannot read is reported by the
+// count assertions rather than guessed at here.
+
+// Index just past the string literal whose opening quote is at `i`.
+function pastString(text, i) {
+  var q = text[i];
+  i++;
+  while (i < text.length && text[i] !== q) {
+    if (text[i] === '\\') i++;
+    i++;
+  }
+  return i + 1;
+}
+
+// Index of the next character that is neither whitespace nor part of a comment.
+function pastSpace(text, i) {
+  for (;;) {
+    if (text[i] === '/' && text[i + 1] === '/') {
+      var nl = text.indexOf('\n', i);
+      i = nl === -1 ? text.length : nl + 1;
+    } else if (text[i] === '/' && text[i + 1] === '*') {
+      var end = text.indexOf('*/', i);
+      i = end === -1 ? text.length : end + 2;
+    } else if (/\s/.test(text[i] || '')) {
+      i++;
+    } else {
+      return i;
+    }
+  }
+}
+
+// Index just past the bracket that closes the one at `i`.
+function pastBracket(text, i) {
+  var depth = 0;
+  while (i < text.length) {
+    var c = text[i];
+    if (c === '"' || c === "'") { i = pastString(text, i); continue; }
+    if (c === '/' && (text[i + 1] === '/' || text[i + 1] === '*')) { i = pastSpace(text, i); continue; }
+    if (c === '{' || c === '[' || c === '(') depth++;
+    else if (c === '}' || c === ']' || c === ')') { depth--; if (depth === 0) return i + 1; }
+    i++;
+  }
+  return text.length;
+}
+
+// Index just past the value beginning at `j`, whatever shape it takes. A value that is not a
+// bracketed literal — `function () { … }`, `20`, `TP.uid()`, `days.map(…)` — runs to the comma that
+// ends it, at depth zero.
+function pastValue(text, j) {
+  var c = text[j];
+  if (c === '{' || c === '[' || c === '(') return pastBracket(text, j);
+  if (c === '"' || c === "'") return pastString(text, j);
+  var depth = 0;
+  while (j < text.length) {
+    var ch = text[j];
+    if (ch === '"' || ch === "'") { j = pastString(text, j); continue; }
+    if (ch === '{' || ch === '[' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === ')') { if (depth === 0) return j; depth--; }
+    else if (ch === ',' && depth === 0) return j;
+    j++;
+  }
+  return text.length;
+}
+
+// The `name: value` properties declared directly in the object literal `text` (which must begin at
+// its `{`), as `{ name, value }` with the value's own text.
+function objectProps(text) {
+  var out = [];
+  var i = pastSpace(text, 1);
+  while (i < text.length && text[i] !== '}') {
+    var name = /^[A-Za-z_$][\w$]*/.exec(text.slice(i, i + 60));
+    if (!name) { i++; continue; }
+    var colon = pastSpace(text, i + name[0].length);
+    if (text[colon] !== ':') { i += name[0].length; continue; }
+    var start = pastSpace(text, colon + 1);
+    var end = pastValue(text, start);
+    out.push({ name: name[0], value: text.slice(start, end) });
+    i = pastSpace(text, end);
+    if (text[i] === ',') i = pastSpace(text, i + 1);
+  }
+  return out;
+}
+
+function propOf(props, name) {
+  for (var i = 0; i < props.length; i++) if (props[i].name === name) return props[i].value;
+  return null;
+}
+
+// The text of a string literal, unquoted; `null` for anything else.
+function asString(text) {
+  if (!text || text[0] !== "'" && text[0] !== '"') return null;
+  return text.slice(1, -1);
+}
+
+// `collectionCard({ … })` blocks, by brace matching from the `{`.
+function collectionCardSpecs(program) {
+  var out = [];
+  var needle = 'collectionCard({';
+  var at = program.indexOf(needle);
+  while (at !== -1) {
+    var open = at + needle.length - 1;
+    var end = pastBracket(program, open);
+    out.push(program.slice(open, end));
+    at = program.indexOf(needle, end);
+  }
+  return out;
+}
+
+// Every field name a panel writes, as `{ collection, field, where }`.
+function panelFields(program) {
+  var out = [];
+  collectionCardSpecs(program).forEach(function (spec, n) {
+    var props = objectProps(spec);
+    var collection = asString(propOf(props, 'key'));
+    if (collection === null) return;   // the caller's count assertion reports a spec it could not read
+
+    // A column: only `key:` names a stored field. `label`, `type`, `placeholder` and `options` are
+    // presentation, and a column with no `key` at all is derived from the row and stores nothing.
+    var columns = propOf(props, 'columns');
+    if (columns && columns[0] === '[') {
+      var i = pastSpace(columns, 1);
+      while (i < columns.length && columns[i] !== ']') {
+        if (columns[i] === '{') {
+          var cellKey = asString(propOf(objectProps(columns.slice(i, pastBracket(columns, i))), 'key'));
+          if (cellKey !== null) out.push({ collection: collection, field: cellKey, where: 'spec ' + n + ', a column' });
+          i = pastBracket(columns, i);
+        } else if (columns[i] === ',') {
+          i = pastSpace(columns, i + 1);
+        } else {
+          i++;
+        }
+      }
+    }
+
+    // The row `blank()` returns. Every property it names is a key an untouched new row will carry,
+    // so every one of them must be a field the wire knows — this is the shape `adapter` hid in.
+    var blank = propOf(props, 'blank');
+    var ret = blank === null ? -1 : blank.indexOf('return');
+    var row = ret === -1 ? null : pastSpace(blank, ret + 'return'.length);
+    if (row !== null && blank[row] === '{') {
+      objectProps(blank.slice(row, pastBracket(blank, row))).forEach(function (p) {
+        out.push({ collection: collection, field: p.name, where: 'spec ' + n + ', the blank row' });
+      });
+    }
+  });
+
+  // The other shape a panel writes a field in: `cellInput('<collection>', row.id, '<field>', …)`.
+  var cellRe = /cellInput\(\s*'([^']+)'\s*,\s*[^,]+,\s*'([^']+)'/g;
+  var m;
+  while ((m = cellRe.exec(program))) out.push({ collection: m[1], field: m[2], where: 'a cellInput call' });
+  return out;
+}
+
+// What the panels write that the wire does not name. `tables` is `COLLECTION_KEYS`.
+function strayPanelFieldComplaints(program, tables) {
+  var out = [];
+  panelFields(program).forEach(function (f) {
+    var known = tables[f.collection];
+    if (!known) {
+      out.push(f.collection + '.' + f.field + ' (' + f.where + '): there is no ' + f.collection +
+        ' collection on the wire at all');
+    } else if (!known[f.field]) {
+      out.push(f.collection + '.' + f.field + ' (' + f.where + '): the wire does not name ' + f.field +
+        ' for ' + f.collection + ', so this edit is destroyed on export');
+    }
+  });
+  return out;
+}
+
 module.exports = {
   name: 'artifact (REQ-807, REQ-808)',
 
@@ -387,6 +575,65 @@ module.exports = {
           'the authoring-only rule did not fire on a file containing a bare marker');
         h.deepEqual(authoringOnlyComplaints('<body>\n  <div id="app"></div>\n</body>'), [],
           'the authoring-only rule fires on an ordinary shell');
+      },
+    },
+
+    {
+      name: 'every field the panels write is a field the wire carries (REQ-809)',
+      run: function () {
+        var TP = h.pure().TP;
+        var tables = TP.tripdatajson.COLLECTION_KEYS;
+        var p = parts();
+        var found = panelFields(p.program);
+
+        // Non-vacuity, first, because everything below is "the list is empty" and an empty list is
+        // what a broken extractor returns too. Three `collectionCard` specs ship, and these are the
+        // three the app has: a rename or a new card is exactly the kind of edit this test exists to
+        // keep honest, so a change here should be a deliberate change to this list.
+        ['lodging', 'chargingNetworks', 'minSocThresholds'].forEach(function (key) {
+          h.ok(found.some(function (f) { return f.collection === key && f.where.indexOf('a column') !== -1; }),
+            'no columns were read from the ' + key + ' card. Either the card is gone from the shipped ' +
+            'program or the extractor above has stopped understanding it, and either way an empty ' +
+            'complaint list below would mean nothing');
+        });
+        // …and the cells, which are how the two budget tables are written.
+        var cells = found.filter(function (f) { return f.where === 'a cellInput call'; }).length;
+        h.ok(cells >= 7, 'only ' + cells + ' cellInput fields were found, too few to be the whole panel');
+        // The blank row is the shape `adapter` hid in, so its extraction is asserted on its own: the
+        // charging card's blank row is where the key that never persisted was written.
+        h.ok(found.some(function (f) { return f.collection === 'chargingNetworks' && f.where.indexOf('blank row') !== -1; }),
+          'the charging card\'s blank row was not read, and that is the exact shape the "Adapter ' +
+          'needed" checkbox was lost in');
+
+        h.deepEqual(strayPanelFieldComplaints(p.program, tables), [],
+          'a panel writes a field the wire does not name, so the edit is destroyed on export:\n        ' +
+          strayPanelFieldComplaints(p.program, tables).join('\n        '));
+
+        // And it would be caught. Three broken programs, one per thing the extractor reads, because
+        // the rule is worth nothing if a wrong column key, a wrong blank key and a wrong cell all
+        // pass it.
+        var badColumn = "TP.ui.tripEditor.collectionCard({ key: 'lodging', blank: function () { return { id: 1 }; }," +
+          " columns: [{ key: 'confirmationNumber', label: 'Confirmation' }] });";
+        h.ok(strayPanelFieldComplaints(badColumn, tables).some(function (c) { return /confirmationNumber/.test(c); }),
+          'a column key the wire does not name was accepted');
+        var badBlank = "TP.ui.tripEditor.collectionCard({ key: 'lodging', blank: function () { return { id: 1, adapter: '' }; }," +
+          " columns: [] });";
+        h.ok(strayPanelFieldComplaints(badBlank, tables).some(function (c) { return /lodging\.adapter/.test(c); }),
+          'a blank-row key the wire does not name was accepted — this is the "Adapter needed" bug, ' +
+          'and the rule does not see it');
+        var badCell = "cellInput('expenses', row.id, 'item', row.item, 'text')";
+        h.ok(strayPanelFieldComplaints(badCell, tables).some(function (c) { return /expenses\.item/.test(c); }),
+          'a cell writing the pre-rename expense field was accepted');
+        h.ok(strayPanelFieldComplaints("cellInput('expenses', row.id, 'label', row.label, 'text')", tables).length === 0,
+          'a cell writing the right expense field was rejected');
+
+        // A key-less column is derived from the row and stores nothing, so it must NOT be read as a
+        // field. Lodging's "Nights" is the live example; this is the same shape, deliberately wrong,
+        // and the rule has to leave it alone.
+        h.deepEqual(strayPanelFieldComplaints(
+          "TP.ui.tripEditor.collectionCard({ key: 'lodging', blank: function () { return { id: 1 }; }," +
+          " columns: [{ label: 'Nights', derive: function (row) { return '2'; } }] });", tables), [],
+          'a derived column was read as a stored field');
       },
     },
   ],

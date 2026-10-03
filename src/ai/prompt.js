@@ -130,7 +130,7 @@ TP.ai.prompt = (function () {
   // collection is deliberately short. The model needs identity, not every field, and a context that
   // carried everything would cost more than it earned.
   var CONTEXT_FIELDS = {
-    lodging: ['location', 'checkIn', 'checkOut', 'area'],
+    lodging: ['location', 'checkIn', 'checkOut', 'area', 'confirmation'],
     reservations: ['what', 'when', 'bookBy', 'priority'],
     preTripActions: ['text', 'category', 'priority', 'done'],
     locations: ['name', 'summary'],

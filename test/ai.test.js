@@ -722,6 +722,81 @@ module.exports = {
     },
 
     {
+      name: 'the fields the agent writes are the fields the panels write and the wire carries',
+      run: async function () {
+        var ctx = openRealm({
+          seed: function (t) {
+            var s = stay('l1', 'Hotel X', '2026-09-01', '2026-09-03');
+            s.confirmation = 'ABC123';
+            t.lodging = [s];
+          },
+        });
+        var TP = ctx.ctx.TP;
+        TP.ai.transport.saveSettings({ mock: true, mode: 'cloud' });
+
+        // A booking reference is the thing an agent is most likely to be handed and least likely to be
+        // able to do anything with: it is not a place and not a date, so it has nowhere to go except a
+        // free-text field of the stay. `add_lodging` could not accept one, the wire did not name one,
+        // and the context could not read one back — so a person who told the agent their confirmation
+        // number had it acknowledged and then silently dropped, twice over.
+        var seen = scripted(TP, [
+          toolCall('c1', 'add_lodging', {
+            location: 'Ryokan Y', checkIn: '2026-09-03', checkOut: '2026-09-04', confirmation: 'XYZ789',
+          }),
+          // The same field, corrected. `update_record` derives its allow-list from the wire's key
+          // tables (`sanitizePatch`), so this reaches the row only if `confirmation` is a field the
+          // mapper names.
+          toolCall('c2', 'update_record', { collection: 'lodging', match: { id: 'l1' }, patch: { confirmation: 'ABC124' } }),
+          // An expense, whose description field is `label` — the name the wire carries and the panel
+          // writes. The tool used to ask the model for `item`, which is a field of `budgetEstimates`, a
+          // different collection. `shallow` copies whatever key comes back, so the model's description
+          // landed on the row as `item` and the exporter dropped it, writing `label: ''`.
+          toolCall('c3', 'add_expense', { date: '2026-09-01', category: 'Food', amount: 2500, label: 'Dinner' }),
+          says('Recorded the stay and the expense.'),
+        ]);
+
+        var out = await runAgent(TP, 'The hotel confirmation is ABC123.');
+        h.equal(out.result.ok, true, 'the run did not finish: ' + JSON.stringify(out.events.errors));
+
+        // What the model is TOLD to send. This is the half a dispatch test cannot reach: the schema is
+        // a description, and `shallow` accepts any key, so a tool that declares `item` gets `item`.
+        var declared = {};
+        TP.ai.tools.schemas({ isCloud: true }, TP.store.trip()).forEach(function (t) {
+          declared[t.function.name] = t.function.parameters.properties;
+        });
+        h.ok(declared.add_lodging.confirmation, 'add_lodging does not offer the model a confirmation number');
+        h.ok(declared.add_expense.label, 'add_expense does not offer the model a label');
+        h.equal(declared.add_expense.item, undefined,
+          'add_expense still asks the model for `item`, which is a budgetEstimate field and is dropped ' +
+          'from an expense on export');
+
+        // What the model is told about what is already there. A field the agent can write but cannot
+        // read back is one it will write twice.
+        var system = seen[0].messages[0].content;
+        h.ok(system.indexOf('ABC123') !== -1,
+          'the trip context does not carry the confirmation number, so the agent cannot see what it set');
+
+        var results = toolResults(seen[seen.length - 1]);
+        h.ok(/Recorded lodging "Ryokan Y"\./.test(results[0].content), 'the stay was not recorded: ' + results[0].content);
+        h.ok(/Updated lodging record l1: confirmation\./.test(results[1].content),
+          'the confirmation number was not patched: ' + results[1].content);
+
+        var lodging = TP.store.trip().lodging;
+        h.equal(lodging[1].confirmation, 'XYZ789', 'the confirmation number did not survive the agent');
+        h.equal(lodging[0].confirmation, 'ABC124', 'the correction did not land');
+        h.equal(TP.store.trip().expenses[0].label, 'Dinner', 'the expense description was not stored');
+
+        // And the half that makes the rest mean something: the model is not the document. What the
+        // agent wrote has to survive the wire, which is where all five of these fields were being lost.
+        var wire = TP.tripdatajson.fromTrip(TP.store.trip());
+        h.equal(wire.lodging[0].confirmation, 'ABC124', 'the wire drops the confirmation number');
+        h.equal(wire.expenses[0].label, 'Dinner', 'the wire drops the expense description');
+        h.equal(wire.expenses[0].item, undefined,
+          'the wire carries the pre-rename expense field too, which the panel would then show twice');
+      },
+    },
+
+    {
       name: 'a read-only document refuses the removal instead of writing to it',
       run: async function () {
         var ctx = openRealm({

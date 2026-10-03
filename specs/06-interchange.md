@@ -104,6 +104,13 @@ Classifications:
 There is no **M** on the iCalendar side for anything with no `VEVENT` counterpart, and every **D** is
 a disclosure obligation, not a silent omission.
 
+The tables below are the ledger `src/interchange/ledger.js` holds, in the same order and the same
+words; a reviewer comparing the two should find them identical. They are also what the mapper's key
+tables must agree with — `trip-data.json` writes a **closed list** of fields, on purpose, and a field
+missing from that list is one a panel can write and the exporter will silently drop. Five such fields
+had accumulated; `ADR-0022` records the class, why the completeness check could not see it, and the
+two-part guard that now can.
+
 ### 3.1 Trip-level
 
 | Canonical field | `trip-data.json` | iCalendar | Note |
@@ -142,9 +149,10 @@ a disclosure obligation, not a silent omission.
 | `item.currency` | M | D | Disclosed |
 | `item.durationMin` | M | F | Folded into `DTEND − DTSTART` |
 | `item.confirmation` | M | F | Folded into `DESCRIPTION` |
+| `item.link` | M | M (`URL`) | Carried only when the value is already an absolute URL this app would use verbatim. The link field takes any text and a `URL` property must be a URI, so a value that is not one stays on the item — `trip-data.json` keeps it, the calendar does not carry it |
 | `item.notes` | M (`desc`) | M (`DESCRIPTION`) | |
 | `item.flags` (8 keys: `charge`, `overnight`, `tour`, `warn`, `minSoc`, `minSocCritical`) | M | D | Disclosed. Unrepresentable in a calendar. A `minSoc` the wire spelled in prose — which the previous generation did, `"54% — FLOOR for the day"` — is kept verbatim in the bag as `minSocRaw` and written back, exactly as a non-numeric `cost` is, so `M` holds rather than becoming a silent **D** (`ADR-0019`) |
-| `item.x.iCal` (unmodelled `VEVENT` properties) | M | P / M | `VALARM`, `RRULE`, `ORGANIZER`, `SEQUENCE`, `STATUS`, `GEO`, `CATEGORIES`, `URL`, `CLASS`, `TRANSP`, `PRIORITY`, `CREATED`, `LAST-MODIFIED` → **P** on `.ics`; **M** on `trip-data.json` (they ride along in the bag). `ATTENDEE` is **not** in this bag — see the row below |
+| `item.x.iCal` (unmodelled `VEVENT` properties) | M | P / M | `VALARM`, `RRULE`, `ORGANIZER`, `SEQUENCE`, `STATUS`, `GEO`, `CATEGORIES`, `CLASS`, `TRANSP`, `PRIORITY`, `CREATED`, `LAST-MODIFIED` → **P** on `.ics`; **M** on `trip-data.json` (they ride along in the bag). `ATTENDEE` is **not** in this bag — see the row below. Nor is `URL`, which carries `item.link` and so has a row of its own above |
 | `ATTENDEE` (not a bag member; consumed into `trip.travelers[]`) | M | F | The `CN` becomes the traveller's name and the `mailto:` the address in the traveller's bag. A line carrying anything else — `PARTSTAT`, `ROLE`, `RSVP` — names something the model has no field for, so the **whole line** is kept on the traveller and written back verbatim. Bagging it per event instead would duplicate every traveller once per event, since this app writes them on every one (`ADR-0017`) |
 
 Two properties the calendar carries belong to this app and are not fields, so they have no row: `X-TP-TRAVELERS`
@@ -158,12 +166,12 @@ reader that does not know them (`ADR-0017`).
 
 | Canonical collection | `trip-data.json` | iCalendar | Note |
 |---|---|---|---|
-| `lodging[]` (6 fields) | M | D | Disclosed. A lodging stay is not an itinerary entry in this model |
+| `lodging[]` (7 fields) | M | D | Disclosed. A lodging stay is not an itinerary entry in this model |
 | `reservations[]` (8 fields + `done`) | M / D | D | All eight `trip-data.json` fields **M**; `done` is **D**. Disclosed |
 | `noReservationNeeded[]` (2 fields) | M | D | Disclosed |
 | `preTripActions[]` (4 fields + `done`) | M / D | D | `done` is **D**. Disclosed |
 | `bucketList[]` (3 fields) | M | D | Disclosed |
-| `chargingNetworks[]` (5 fields) | M | D | Disclosed. The previous generation wrote `nacsAdapter` as free text (`"True"`, `"Tesla SC: Yes"`); text this generation cannot read as a boolean is kept verbatim in the bag as `nacsAdapterRaw` (`ADR-0019`) |
+| `chargingNetworks[]` (6 fields) | M | D | Disclosed. The previous generation wrote `nacsAdapter` as free text (`"True"`, `"Tesla SC: Yes"`); text this generation cannot read as a boolean is kept verbatim in the bag as `nacsAdapterRaw` (`ADR-0019`) |
 | `minSocThresholds[]` (6 fields) | M | D | Disclosed. The previous generation wrote `minSoc` as free text (`"100%"`, `"60%+"`), kept verbatim in the bag as `minSocRaw` (`ADR-0019`) |
 | `locations[]` (8 fields incl. nested `activities[]`) | M | D | Disclosed |
 | `contacts[]` (2 fields) | M | D | Disclosed |

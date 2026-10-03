@@ -336,7 +336,7 @@ TP.model = (function () {
     // non-empty and the mapper reads a missing `desc` back as `''`, so `notes` is canonically a
     // string — always present, possibly empty — and collapsing it here would make the model
     // toggle between absent and `''` on every round trip.
-    var OPTIONAL_STRINGS = ['time', 'timeRaw', 'location', 'currency', 'confirmation'];
+    var OPTIONAL_STRINGS = ['time', 'timeRaw', 'location', 'currency', 'confirmation', 'link'];
     for (var s = 0; s < OPTIONAL_STRINGS.length; s++) {
       var k = OPTIONAL_STRINGS[s];
       if (it[k] === null || it[k] === '') delete it[k];
