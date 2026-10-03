@@ -1,4 +1,4 @@
-// Tool schemas and dispatch for the planning agent (specs/07-ui.md §3.3).
+// Tool schemas and dispatch for the planning agent (specs/08-security.md §8, specs/09-testing.md §9).
 //
 // Every write-back tool goes through `TP.store.edit`, which means three things for free and on
 // purpose: the change is undoable, it lands in the working payload rather than the file, and it
@@ -8,6 +8,12 @@
 // The EV tools are injected only when the trip has a vehicle, so a model planning a petrol trip is
 // never told about charging.
 //
+// `update_record` and `remove_record` exist because the first generation of tools could only
+// append, and a real session showed what that costs: the agent recorded the same three stays
+// fourteen times, then told the person it had no way to take any of them back, and they cleaned it
+// up by hand. An agent that can write into the trip has to be able to correct itself — otherwise a
+// mistake it makes is a mistake the person has to undo in the UI.
+//
 // One deliberate omission from the earlier version: there is no `set_budget` tool. The canonical
 // model derives the budget from its line items and deletes any stored total, so a tool that wrote
 // one would appear to succeed and then vanish on the next load. `add_budget_estimate` is the whole
@@ -15,6 +21,27 @@
 
 TP.ai.tools = (function () {
   'use strict';
+
+  // The only collections the agent may change or remove. Days, items, keyTips, checklists,
+  // travelers, vehicle and destinations are NOT here on purpose: they are the trip's spine, and a
+  // tool that could rewrite them turns an over-eager model into data loss. `keyTips` is also a bare
+  // string[] with no id, so it could never be targeted in the first place.
+  //
+  // `minSocThresholds` is here even though `set_min_soc` is an EV tool, because it is the same
+  // append-only shape as the rest: every call piles on another threshold, so it can make exactly
+  // the mess this pair of tools exists to clear up.
+  var MUTABLE_COLLECTIONS = {
+    lodging: 1, reservations: 1, locations: 1, bucketList: 1, contacts: 1, expenses: 1,
+    criticalAlerts: 1, budgetEstimates: 1, preTripActions: 1, chargingNetworks: 1,
+    minSocThresholds: 1,
+  };
+  // The tool descriptions and the refusal message are both built from this, so what the model is
+  // told it may touch and what it is actually allowed to touch cannot drift apart.
+  var MUTABLE_LIST = Object.keys(MUTABLE_COLLECTIONS).join(', ');
+
+  // Derived from checkIn/checkOut and deleted by the normaliser on every load (model/trip.js), so
+  // storing one would be a field that vanishes. `id` is refused for the same class of reason.
+  var DERIVED_FIELDS = { nights: 1 };
 
   var WEB_TOOLS = [
     fn('web_search', 'Search the web for current information: opening hours, prices, events, transport. Ollama Cloud mode only.', {
@@ -144,6 +171,20 @@ TP.ai.tools = (function () {
       amount: { type: 'number' },
       item: { type: 'string' },
     }, ['amount', 'category']),
+    // `match` and `patch` are deliberately free-form objects. The identifying fields differ per
+    // collection (`location` for lodging, `what` for a reservation, `name` for a location), and a
+    // schema that listed all of them would invite the model to fill in the ones that do not apply.
+    // The description teaches the shape; dispatch enforces it.
+    fn('update_record', 'Change fields on a record you already wrote: ' + MUTABLE_LIST + '. Use this rather than adding a second copy of something that is already there.', {
+      collection: { type: 'string', description: 'Which collection: ' + MUTABLE_LIST + '.' },
+      match: { type: 'object', description: 'Which record. Prefer {"id":"..."} from the trip summary. Otherwise give one or more fields to compare, e.g. {"location":"Hotel X","checkIn":"2026-09-01"} or {"what":"Ferry booking"}. Every field must match; text is compared ignoring case and extra spaces. If several records match, nothing is changed and the error lists their ids.' },
+      patch: { type: 'object', description: 'The fields to change, e.g. {"checkOut":"2026-09-04","notes":"late arrival"}. Unknown, nested or derived fields are ignored, and id can never be changed.' },
+    }, ['collection', 'match', 'patch']),
+    fn('remove_record', 'Delete a record you already wrote, or every duplicate of one. Use this to clean up your own duplicates instead of leaving them for the person.', {
+      collection: { type: 'string', description: 'Which collection: ' + MUTABLE_LIST + '.' },
+      match: { type: 'object', description: 'Which record. Prefer {"id":"..."} from the trip summary, or give fields like {"location":"Hotel X","checkIn":"2026-09-01"}. Every field must match; text ignores case and extra spaces.' },
+      all: { type: 'boolean', description: 'Set true to delete EVERY record that matches, not just one. Only when the several matches are duplicates you mean to clear.' },
+    }, ['collection', 'match']),
   ];
 
   var EV_TOOLS = [
@@ -276,7 +317,7 @@ TP.ai.tools = (function () {
 
       case 'add_lodging':
         log('Adding lodging: ' + args.location);
-        return collection(name, 'lodging', args, 'Recorded lodging "' + args.location + '".');
+        return collection(name, 'lodging', args, 'Recorded lodging "' + args.location + '".', null, lodgingDuplicate);
 
       case 'add_reservation':
         log('Adding reservation: ' + args.what);
@@ -350,6 +391,14 @@ TP.ai.tools = (function () {
         return collection(name, 'expenses', args,
           'Recorded ' + TP.format.fmtMoney(args.amount) + ' in ' + args.category + '.');
 
+      case 'update_record':
+        log('Updating ' + (args.collection || 'a record'));
+        return settle(name, updateRecord(args));
+
+      case 'remove_record':
+        log('Removing ' + (args.collection || 'a record'));
+        return settle(name, removeRecord(args));
+
       default:
         return settle(name, 'Unknown tool: ' + name);
     }
@@ -376,15 +425,215 @@ TP.ai.tools = (function () {
     return out || {};
   }
 
-  function collection(toolName, key, args, message, extra) {
+  // `guard` is optional and is consulted inside the edit, before the push, so a refusal leaves the
+  // document untouched: `store.edit` compares canonically and sees no change, so there is no dirty
+  // flag, no autosave and no empty commit (decisions/0018).
+  function collection(toolName, key, args, message, extra, guard) {
     var payload = shallow(args);
+    // Every row the agent adds is addressable the moment it lands. It was not, and that was the
+    // second half of the disaster this pair of tools was written for: `normalizeEntity` only mints
+    // an id on load or import, and the committed payload is the working copy verbatim, so an
+    // AI-added row stayed id-less for the whole session. `findIn` and the panel's `removeRow` match
+    // on exact id, so the row could not be found at all — the person could not remove it, and
+    // editing one cell could hit a different row. Assigning after `shallow` also means a
+    // model-supplied id is overwritten rather than trusted.
+    payload.id = TP.uid();
     if (extra) Object.keys(extra).forEach(function (k) { payload[k] = extra[k]; });
     var res = edit(toolName, message, function (trip) {
       trip[key] = trip[key] || [];
+      if (guard) {
+        var refusal = guard(trip, payload);
+        if (refusal) return { error: refusal };
+      }
       trip[key].push(payload);
       return true;
     });
     return settle(toolName, res.error ? 'Failed: ' + res.error : message);
+  }
+
+  // ---- update_record / remove_record ----
+
+  // The agent used to be append-only, which is how a real session reached fourteen lodging records
+  // for three stays and then had to tell the person it could not undo any of it. These two tools are
+  // that session's answer: the agent can correct and remove what it wrote.
+
+  function normText(v) {
+    return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  // A match whose values are all null or absent would satisfy `rowMatches` for EVERY row, which
+  // would make an empty match mean "the whole collection". `matchRecords` enforces that it selects
+  // nothing, and both tools call this first so they can say which mistake it was.
+  function matchKeys(match) {
+    var keys = [];
+    Object.keys(match || {}).forEach(function (k) {
+      var v = match[k];
+      if (v == null || typeof v === 'object') return;
+      keys.push(k);
+    });
+    return keys;
+  }
+
+  function rowMatches(row, match) {
+    var keys = Object.keys(match || {});
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i], want = match[k];
+      if (want == null) continue;
+      if (typeof want === 'object') return false;
+      // `id` is an opaque token, so it is compared exactly; everything else is human text.
+      if (k === 'id') {
+        if (String(row.id == null ? '' : row.id) !== String(want)) return false;
+        continue;
+      }
+      // A field the row does not have cannot match. This is what stops {"location":"Hotel X"} from
+      // matching a reservation, which has no `location`.
+      if (row[k] == null) return false;
+      if (normText(row[k]) !== normText(want)) return false;
+    }
+    return true;
+  }
+
+  function matchRecords(list, match) {
+    var out = [];
+    // A match with nothing in it selects nothing, and that is enforced here rather than only at the
+    // two call sites. Both of them already refuse it with a better message, but the rule belongs to
+    // the matcher: an all-null match must never be a way to say "every row", whoever calls this.
+    if (!matchKeys(match).length) return out;
+    for (var i = 0; i < (list || []).length; i++) if (rowMatches(list[i], match)) out.push(list[i]);
+    return out;
+  }
+
+  function describeMatch(match) {
+    return Object.keys(match || {}).filter(function (k) { return match[k] != null; })
+      .map(function (k) { return k + '="' + match[k] + '"'; }).join(', ');
+  }
+
+  function idsOf(rows) {
+    return rows.map(function (r) { return r.id == null ? '(no id)' : r.id; }).join(', ');
+  }
+
+  function writableKey(args) {
+    var key = args.collection == null ? '' : String(args.collection);
+    if (!key) return { error: 'collection is required — name one of: ' + MUTABLE_LIST + '.' };
+    // An own-key check, not a truthy lookup: `MUTABLE_COLLECTIONS['constructor']` is inherited from
+    // Object.prototype and would otherwise name a "collection" that is really a function.
+    if (!Object.prototype.hasOwnProperty.call(MUTABLE_COLLECTIONS, key)) {
+      return { error: '"' + key + '" is not a collection the agent can change. It can change: ' + MUTABLE_LIST + '.' };
+    }
+    return { key: key };
+  }
+
+  // A patch may only touch fields the format actually carries for that collection. This is not
+  // tidiness: an unknown key is NOT dropped on the way out. `tripdatajson` writes unknown wire keys
+  // into the `x` bag and reads them back again, so an invented field would persist invisibly while
+  // the UI showed nothing and the model believed it had succeeded. Deriving the field list from the
+  // interchange module means there is one list, not two that can drift.
+  function sanitizePatch(key, patch) {
+    var known = (TP.tripdatajson.COLLECTION_KEYS || {})[key] || {};
+    var fields = {}, keys = [];
+    Object.keys(patch || {}).forEach(function (k) {
+      if (!Object.prototype.hasOwnProperty.call(known, k)) return;
+      if (k === 'id' || DERIVED_FIELDS[k]) return;
+      var v = patch[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) return;
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) if (v[i] && typeof v[i] === 'object') return;
+        v = v.map(function (x) { return String(x); });
+      }
+      fields[k] = v;
+      keys.push(k);
+    });
+    return { fields: fields, keys: keys };
+  }
+
+  function updateRecord(args) {
+    var picked = writableKey(args);
+    if (picked.error) return 'Failed: ' + picked.error;
+    if (!matchKeys(args.match).length) {
+      return 'Failed: match must name at least one field with a value, so one record is targeted. ' +
+        'Call get_trip_summary to see the records and their ids.';
+    }
+    var clean = sanitizePatch(picked.key, args.patch);
+    if (!clean.keys.length) {
+      return 'Failed: patch must name at least one changeable field for ' + picked.key + '.';
+    }
+    var out = edit('update_record', 'Update ' + picked.key, function (trip) {
+      var matches = matchRecords(trip[picked.key] || [], args.match);
+      if (!matches.length) {
+        return { error: 'no ' + picked.key + ' record matches ' + describeMatch(args.match) +
+          '. Call get_trip_summary to see the records and their ids.' };
+      }
+      // Ambiguity is refused rather than applied. Patching several rows from one patch is almost
+      // never what the model meant, and the error hands it the ids it needs to say which one.
+      if (matches.length > 1) {
+        return { error: matches.length + ' ' + picked.key + ' records match ' + describeMatch(args.match) +
+          ' (ids: ' + idsOf(matches) + '). Match on one id, or add fields to narrow it.' };
+      }
+      var row = matches[0], changed = [];
+      Object.keys(clean.fields).forEach(function (k) {
+        if (row[k] === clean.fields[k]) return;
+        row[k] = clean.fields[k];
+        changed.push(k);
+      });
+      if (!changed.length) return { unchanged: true, id: row.id };
+      return { id: row.id, keys: changed };
+    });
+    if (out.error) return 'Failed: ' + out.error;
+    if (out.unchanged) return 'No change: ' + picked.key + ' record ' + out.id + ' already has those values.';
+    return 'Updated ' + picked.key + ' record ' + out.id + ': ' + out.keys.join(', ') + '.';
+  }
+
+  function removeRecord(args) {
+    var picked = writableKey(args);
+    if (picked.error) return 'Failed: ' + picked.error;
+    if (!matchKeys(args.match).length) {
+      return 'Failed: match must name at least one field with a value, so the whole collection is not removed. ' +
+        'Call get_trip_summary to see the records and their ids.';
+    }
+    var removeAll = args.all === true;
+    var out = edit('remove_record', 'Remove from ' + picked.key, function (trip) {
+      var list = trip[picked.key] || [];
+      var matches = matchRecords(list, args.match);
+      if (!matches.length) {
+        return { error: 'no ' + picked.key + ' record matches ' + describeMatch(args.match) +
+          '. Call get_trip_summary to see the records and their ids.' };
+      }
+      // One match removes one row. Several matches need `all: true`, because a model that meant to
+      // clear eleven duplicates and a model that meant to delete one legitimate stay look identical
+      // from here, and guessing wrong destroys data the person wanted. The refusal names every id,
+      // so the model can either be precise or say plainly that it means all of them.
+      if (matches.length > 1 && !removeAll) {
+        return { error: matches.length + ' ' + picked.key + ' records match ' + describeMatch(args.match) +
+          ' (ids: ' + idsOf(matches) + '). Match on one id, add fields to narrow it, or pass all: true to remove every match.' };
+      }
+      // Filtered by object identity, not by id: rows written before ids were minted have no id at
+      // all, and a duplicated id must never take out the wrong row.
+      trip[picked.key] = list.filter(function (x) { return matches.indexOf(x) === -1; });
+      return { n: matches.length, ids: matches.map(function (m) { return m.id; }) };
+    });
+    if (out.error) return 'Failed: ' + out.error;
+    if (out.n === 1) return 'Removed ' + picked.key + ' record ' + out.ids[0] + '.';
+    return 'Removed ' + out.n + ' ' + picked.key + ' records matching ' + describeMatch(args.match) +
+      ' (ids: ' + out.ids.join(', ') + ').';
+  }
+
+  // `add_lodging` appends, and until this change the model could only see a count of what was
+  // there — so adding the same stay three times looked, from inside the loop, like three different
+  // stays. Refuse the exact duplicate and name the existing record, so the model corrects itself
+  // with update_record instead of piling on. A stay at the same place with a DIFFERENT check-in is
+  // a separate stay and is allowed.
+  function lodgingDuplicate(trip, payload) {
+    var list = trip.lodging || [];
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i];
+      if (normText(row.location) === normText(payload.location) &&
+          normText(row.checkIn) === normText(payload.checkIn)) {
+        return '"' + payload.location + '" is already recorded for ' +
+          (payload.checkIn ? payload.checkIn : 'no check-in date') + ' as id ' + row.id +
+          '. Use update_record to change that stay, or give a different checkIn to record a separate stay.';
+      }
+    }
+    return null;
   }
 
   // ---- Screening a fetched document (08-security.md §8, REQ-712) ----
@@ -492,9 +741,13 @@ TP.ai.tools = (function () {
     WEB_TOOLS: WEB_TOOLS,
     PLANNING_TOOLS: PLANNING_TOOLS,
     EV_TOOLS: EV_TOOLS,
+    MUTABLE_COLLECTIONS: MUTABLE_COLLECTIONS,
     schemas: schemas,
     dispatch: dispatch,
     newItem: newItem,
     resolveDay: resolveDay,
+    // Pure, and exported so the matching and patch rules can be pinned without the loop.
+    matchRecords: matchRecords,
+    sanitizePatch: sanitizePatch,
   };
 })();
