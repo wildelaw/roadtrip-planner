@@ -6,6 +6,10 @@
 //   node test/run.js            every test file
 //   node test/run.js history    files whose name contains "history"
 //
+// A flag given to the runner is given to every test process it starts, so
+// `node --no-sparkplug test/run.js` covers the whole run and not just this process. See
+// `inheritedArgv` for why that had to be arranged rather than assumed.
+//
 // No framework, no dependency, nothing to install — the same rule as the build (REQ-107). Each test
 // file exports `{ name, tests: [{ name, run(t) }], skip? }`; a test that throws fails, and the runner
 // reports the failing assertion with its stack.
@@ -91,8 +95,25 @@ function parseChild(stdout) {
   }
 }
 
+// Flags given to the runner reach the processes it starts.
+//
+// Every file runs in its own process, started from `process.execPath` with nothing but the file
+// name — so without this, a flag on the command line applies to the parent and to nothing else.
+// That is not a neutral default: `node --no-sparkplug test/run.js` reads as though it covers the
+// run, and it covers one process out of twenty. A flag that silently does almost nothing is worse
+// than one that does nothing, because the person who typed it believes the run is covered.
+//
+// The flags that own a port or a file are left behind. Each child binding the same inspector
+// address would turn one suite run into a wall of "address already in use", and a child writing
+// its own heap snapshot over the parent's would be a worse surprise than the flag not applying.
+var KEPT_BY_THE_PARENT = /^--(inspect|debug|prof|heapsnapshot|cpu-prof|report-|diagnostic-dir)/;
+
+function inheritedArgv() {
+  return process.execArgv.filter(function (arg) { return !KEPT_BY_THE_PARENT.test(arg); });
+}
+
 function runFile(file) {
-  var outcome = childProcess.spawnSync(process.execPath, [SELF, '--one', file], {
+  var outcome = childProcess.spawnSync(process.execPath, inheritedArgv().concat([SELF, '--one', file]), {
     encoding: 'utf8',
     cwd: path.join(HERE, '..'),
     timeout: 300000,

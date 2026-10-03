@@ -184,6 +184,24 @@ headless Chrome over the DevTools Protocol using Node's global `WebSocket` and `
 dependency (`test/browser.js`); `WebSocket` is not a global before 22, and on an older runtime those
 tests fail rather than skip, naming the version. The artifact itself has no such floor.
 
+**On macOS arm64 with Node 24, one run in five dies of a crash that is not this program's.** The
+symptom is a file reported as `killed by SIGSEGV` with no failing test and no stack, from a process
+that wrote nothing at all. It is [nodejs/node#62393](https://github.com/nodejs/node/issues/62393): a
+fault in V8's scavenger, clearing stale pointers after a young-generation trim, which this harness's
+use of `vm` — one realm per test (`test/harness.js`, `pure`) — happens to trigger. The fault is in
+the runtime, and no change here can fix it; what it does need is for the run to be repeatable while
+it is worked around.
+
+```bash
+node --no-sparkplug test/run.js
+```
+
+That turns off the baseline compiler the fault needs, and it is the workaround the Node issue
+reports: 25 consecutive runs clean, against five failures in the 25 before it. The runner passes its
+own flags to every test process it starts, so the one flag covers the whole suite. The issue reports
+Node 24.x and some 26.x on macOS arm64 and does not report Node 20 or 22; 20 runs of Node 26.0.0 on
+the machine this was written on were clean as well. Re-run before believing a red result.
+
 **The output lands in `dist/`, which is git-ignored.** That is deliberate: the artifact is a *build
 output*, and a repository that carries its own build ships a second copy of the app — the copy people
 actually open — so a commit that edited `src/` without rebuilding would publish a file that disagrees
