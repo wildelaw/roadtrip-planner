@@ -438,6 +438,127 @@ module.exports = {
     },
 
     {
+      // REQ-701 is why this test exists. Assistant text is PARSED INTO NODES, so the page holds a
+      // `<strong>` where the model wrote `**bold**` and the model's own string is nowhere in the
+      // document. Selecting the bubble and copying therefore gives the rendered text — which is
+      // what a person reported: "copy/paste does not retain markdown markup". The Copy button is
+      // the affordance that hands over the string instead, so what is asserted here is that the
+      // clipboard receives the text AS WRITTEN, and that a browser which refuses the clipboard is
+      // told on rather than left looking as though it worked.
+      name: 'a message copies as the markdown it was written in, and a refused clipboard says so (REQ-701)',
+      run: async function () {
+        var server = await browser.serve();
+        var page = await browser.visit({ origin: server.origin });
+        try {
+          var out = await page.evaluate(async function () {
+            var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+            // Seed the transcript, THEN open the tab. `seed()` memoizes per document and runs the
+            // first time the AI panel renders, so a record written after the tab is opened is never
+            // read at all. Two details decide whether this works: the key is the registry's
+            // (`tp.app.conv.` + id, `storage/adapter.js`), and `tripId` must be the same docId the
+            // panel computes (`ai-panel.js`, `docIdOf(...) || 'unsaved'`) or the conversation is
+            // filtered out and the transcript is empty — which would let every assertion below pass
+            // against nothing.
+            var docId = TP.store.docIdOf(TP.store.container()) || 'unsaved';
+            var markdown = 'Here is a **plan**.\n\n- Day one\n- Day two';
+            var asked = 'Plan me **five** days.';
+            localStorage.setItem('tp.app.conv.copy-1', JSON.stringify({
+              id: 'copy-1',
+              tripId: docId,
+              createdAt: 1,
+              messages: [{ role: 'user', content: asked }, { role: 'assistant', content: markdown }],
+            }));
+            document.querySelector('#tabs button[data-tab="ai"]').click();
+            await sleep(150);
+
+            // The clipboard, as a recorder. `navigator.clipboard` is a getter on the prototype, so it
+            // is shadowed on the instance rather than assigned.
+            var written = [];
+            var behavior = function (text) { written.push(text); return Promise.resolve(); };
+            Object.defineProperty(navigator, 'clipboard', {
+              configurable: true,
+              value: { writeText: function (t) { return behavior(t); } },
+            });
+
+            function buttonFor(role) {
+              var row = document.querySelector('.msg--' + role);
+              return row ? row.querySelector('.msg__role button') : null;
+            }
+            function bubbleText(role) {
+              var row = document.querySelector('.msg--' + role);
+              return row ? row.querySelector('.bubble').textContent : null;
+            }
+
+            var assistantBtn = buttonFor('assistant');
+            var userBtn = buttonFor('user');
+            var found = {
+              assistant: !!assistantBtn,
+              user: !!userBtn,
+              label: assistantBtn ? assistantBtn.textContent : null,
+              rendered: bubbleText('assistant'),
+              rows: document.querySelectorAll('.msg').length,
+            };
+
+            // The negative control first, on the untouched button. `copyToClipboard` reports a refusal
+            // by resolving, not rejecting, so the only thing that can tell the person it failed is
+            // what the handler does with that answer.
+            behavior = function () { return Promise.reject(new Error('denied')); };
+            if (assistantBtn) assistantBtn.click();
+            await sleep(60);
+            var refused = {
+              toast: document.getElementById('toasts').textContent,
+              label: assistantBtn ? assistantBtn.textContent : null,
+            };
+
+            behavior = function (text) { written.push(text); return Promise.resolve(); };
+            if (assistantBtn) assistantBtn.click();
+            await sleep(60);
+            var agent = { copied: written.slice(), label: assistantBtn ? assistantBtn.textContent : null };
+
+            // The person's own message. They asked for a button on every message, not only on replies.
+            if (userBtn) userBtn.click();
+            await sleep(60);
+            var mine = { copied: written.slice(), label: userBtn ? userBtn.textContent : null };
+
+            return {
+              docId: docId, markdown: markdown, asked: asked,
+              found: found, refused: refused, agent: agent, mine: mine,
+            };
+          });
+
+          h.equal(out.found.rows, 2, 'the seeded conversation did not render (docId ' + out.docId + ')');
+          h.ok(out.found.assistant, 'the agent’s message has no copy button');
+          h.ok(out.found.user, 'the person’s own message has no copy button');
+          h.equal(out.found.label, 'Copy', 'the copy button is not labelled Copy');
+
+          // The premise of the whole feature, asserted rather than assumed: the RENDERED text has
+          // already lost the markup. Without this, a clipboard that happened to receive rendered
+          // text would pass the assertions below, and the button would be doing nothing.
+          h.equal(out.found.rendered.indexOf('**'), -1,
+            'the rendered bubble still contains asterisks, so this test is not testing what it claims');
+
+          h.equal(out.agent.copied.length, 1, 'the copy button wrote nothing to the clipboard');
+          h.equal(out.agent.copied[0], out.markdown,
+            'the clipboard did not receive the message as it was written');
+          h.equal(out.agent.label, 'Copied', 'the button does not report that it copied');
+
+          h.equal(out.mine.copied.length, 2, 'the person’s own message has no working copy button');
+          h.equal(out.mine.copied[1], out.asked,
+            'copying the person’s own message gave something other than what they wrote');
+
+          h.ok(/refused clipboard access/.test(out.refused.toast),
+            'the browser refused the clipboard and the app said nothing: ' + JSON.stringify(out.refused.toast));
+          h.equal(out.refused.label, 'Copy',
+            'the button claimed success after the browser refused the copy');
+        } finally {
+          page.close();
+          await server.close();
+        }
+      },
+    },
+
+    {
       name: 'the artifact’s own policy admits the WebGPU transport: the module host is a script source, and WASM compiles (REQ-713)',
       run: async function () {
         // The regression this exists for: the policy named the CDN only as a `connect-src`, but a
