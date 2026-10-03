@@ -30,18 +30,18 @@ TP.tripdatajson = (function () {
 
   var ITEM_KEYS = {
     id: 1, type: 1, title: 1, time: 1, timeRaw: 1, location: 1, cost: 1, currency: 1,
-    durationMin: 1, confirmation: 1, notes: 1, flags: 1,
+    durationMin: 1, confirmation: 1, link: 1, notes: 1, flags: 1,
     activity: 1, desc: 1, // the wire spellings of title / notes
     charge: 1, overnight: 1, tour: 1, warn: 1, minSoc: 1, minSocCritical: 1,
   };
 
   var COLLECTION_KEYS = {
-    lodging: { id: 1, location: 1, checkIn: 1, checkOut: 1, area: 1, notes: 1 },
+    lodging: { id: 1, location: 1, checkIn: 1, checkOut: 1, area: 1, notes: 1, confirmation: 1 },
     reservations: { id: 1, what: 1, when: 1, duration: 1, cost: 1, howToBook: 1, bookBy: 1, priority: 1, done: 1 },
     noReservationNeeded: { id: 1, what: 1, notes: 1 },
     preTripActions: { id: 1, text: 1, category: 1, priority: 1, done: 1 },
     bucketList: { id: 1, name: 1, date: 1, dateLabel: 1 },
-    chargingNetworks: { id: 1, name: 1, location: 1, network: 1, nacsAdapter: 1 },
+    chargingNetworks: { id: 1, name: 1, location: 1, network: 1, nacsAdapter: 1, notes: 1 },
     minSocThresholds: { id: 1, day: 1, leg: 1, minSoc: 1, reason: 1, severity: 1 },
     locations: { id: 1, name: 1, icon: 1, summary: 1, lodging: 1, charging: 1, dining: 1, activities: 1 },
     contacts: { id: 1, what: 1, how: 1 },
@@ -385,6 +385,7 @@ TP.tripdatajson = (function () {
       currency: src && src.currency != null ? str(src.currency) : undefined,
       durationMin: numOrUndef(src && src.durationMin),
       confirmation: src && src.confirmation != null ? str(src.confirmation) : undefined,
+      link: src && src.link != null ? str(src.link) : undefined,
       notes: src && (src.notes != null || src.desc != null) ? str(src.notes != null ? src.notes : src.desc) : '',
       type: 'activity',
     };
@@ -683,6 +684,11 @@ TP.tripdatajson = (function () {
     // absent (see `dropBag`).
     if (collection === 'minSocThresholds' && out.minSoc != null) dropBag(entity, 'minSocRaw');
     if (collection === 'chargingNetworks' && out.nacsAdapter != null) dropBag(entity, 'nacsAdapterRaw');
+    // `lodging[].confirmation` reached the wire through the bag until this generation named it, so a
+    // row saved by an earlier build has the old value in `x.tripDataJson.confirmation`. `emitUnknown`
+    // runs AFTER the named fields above, so leaving it would let that stale copy overwrite the value
+    // the person just typed — an edit silently reverted by the file it was meant to correct.
+    if (collection === 'lodging' && out.confirmation != null) dropBag(entity, 'confirmation');
     emitUnknown(out, entity);
     return out;
   }
@@ -734,6 +740,7 @@ TP.tripdatajson = (function () {
     if (item.durationMin != null) out.durationMin = item.durationMin;
     if (item.currency) out.currency = item.currency;
     if (item.confirmation) out.confirmation = item.confirmation;
+    if (item.link) out.link = item.link;
 
     var f = item.flags || {};
     if (f.charge) out.charge = true;

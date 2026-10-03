@@ -225,7 +225,10 @@ TP.ical = (function () {
   // stops the bag from writing it a second time, or a day would come back from its own export
   // carrying a bagged ATTENDEE beside the one the model folded.
   var DAY_PROPERTIES = ['UID', 'DTSTAMP', 'DTSTART', 'DTEND', 'SUMMARY', 'DESCRIPTION', 'ATTENDEE'];
-  var ITEM_PROPERTIES = DAY_PROPERTIES.concat(['LOCATION', 'DURATION', 'X-TP-KIND']);
+  // URL is in this list because `item.link` is a field of the model: a property the mapper writes for
+  // itself must be in the list that stops the bag from writing it a second time, or an item would come
+  // back from its own export carrying a bagged URL beside the one the model holds.
+  var ITEM_PROPERTIES = DAY_PROPERTIES.concat(['LOCATION', 'DURATION', 'URL', 'X-TP-KIND']);
 
   function emitBagLines(lines, name, raw) {
     var parts = String(raw == null ? '' : raw).split('\n');
@@ -387,6 +390,24 @@ TP.ical = (function () {
         }
         lines.push(fold('SUMMARY:' + escapeText(item.title || 'Untitled')));
         if (item.location) lines.push(fold('LOCATION:' + escapeText(item.location)));
+        // `item.link` is the one field the itinerary item editor writes that a calendar has a
+        // standard property for, so it is written as URL rather than folded into the DESCRIPTION —
+        // but only when it really is one (see `calendarUrl`).
+        //
+        // A URL that arrived from a calendar before this generation named the field is in the iCal
+        // bag, where `carryBag` put it and where it has round-tripped verbatim ever since. Dropping
+        // it would lose a value the previous generation kept, so it is written back while the item
+        // has no link of its own. (A person who clears such a link sees it return: the model holds no
+        // trace of a link that was deleted, so this mapper cannot tell "never had one" from "had one
+        // and cleared it". The wart is confined to URLs an older build imported, and the alternative —
+        // losing them — is the failure this whole change is about.)
+        var url = calendarUrl(item.link);
+        if (url) {
+          lines.push(fold('URL:' + escapeText(url)));
+        } else {
+          var urlBag = TP.model.bag(item, FORMAT);
+          if (urlBag && calendarUrl(urlBag.URL)) emitBagLines(lines, 'URL', urlBag.URL);
+        }
         var idesc = itemDescription(item);
         if (idesc) lines.push(fold('DESCRIPTION:' + escapeText(idesc)));
         // An item with no time has the same DTSTART shape as the day it sits in, so this app
@@ -617,6 +638,7 @@ TP.ical = (function () {
         // and cost the item its time on the next export. What the calendar stated is kept where it
         // belongs — in `time`, and in the bag's DTSTART if this mapper did not write it.
         location: text(firstValue(ev.props, 'LOCATION')) || undefined,
+        link: text(firstValue(ev.props, 'URL')) || undefined,
         notes: unfolded.notes,
         confirmation: unfolded.confirmation,
         durationMin: durationFrom(ev),
@@ -757,6 +779,28 @@ TP.ical = (function () {
     var h = Number(m[1]);
     if (h > 23 || Number(m[2]) > 59) return null;
     return (h < 10 ? '0' + h : String(h)) + ':' + m[2];
+  }
+
+  // The link this app carries on an itinerary item, as the calendar's `URL` property, or `null` when
+  // the calendar cannot honestly carry it.
+  //
+  // `item.link` is FREE TEXT: the item editor takes any string, and `safeLink` deliberately renders a
+  // value it will not linkify as plain text rather than dropping it. A `URL` property, though, is a
+  // URI — RFC 5545's value type, the vendored validator's `URI` check, and the app's own
+  // `format.linkifyTarget` all agree on "has a scheme" — so writing a value like `rain` into a URL
+  // line produces a calendar this app's own validator refuses, which is the disagreement
+  // `06-interchange.md` §2 forbids.
+  //
+  // A value is carried when it is ALREADY an absolute URL this app would use verbatim. That is the
+  // same rule `costRaw` and `timeRaw` follow, and for the same reason: `www.example.com` linkifies to
+  // `https://www.example.com`, so writing the linkified form would make the export a different value
+  // from the one that went in, and the calendar would stop being a fixed point. Anything else stays
+  // on the item, where `trip-data.json` keeps it and the bag keeps it; the `item.link` row of the
+  // ledger states the condition.
+  function calendarUrl(link) {
+    var s = link == null ? '' : String(link).trim();
+    if (!s) return null;
+    return TP.format.linkifyTarget(s) === s ? s : null;
   }
 
   function durationFrom(ev) {

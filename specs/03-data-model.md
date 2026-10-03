@@ -46,16 +46,16 @@ union is much larger than the intersection, and the union is what is modelled.
 |---|---|---|---|
 | **Trip** | `id`, `docId`, `title`, `subtitle`, `currency`, `startDate`, `endDate`, `destinations[]`, `travelers[]`, `vehicle`, `x` | `id`, `title` | both |
 | **Day** | `id`, `date`, `title`, `stay`, `drive`, `chargeStops`, `nacs`, `summary`, `dining[]`, `tips[]`, `items[]`, `x` | `id`, `date` | both |
-| **Item** (itinerary entry) | `id`, `type`, `title`, `time`, `timeRaw`, `location`, `cost`, `currency`, `durationMin`, `confirmation`, `notes`, `flags`, `x` | `id`, `title` | both |
+| **Item** (itinerary entry) | `id`, `type`, `title`, `time`, `timeRaw`, `location`, `cost`, `currency`, `durationMin`, `confirmation`, `link`, `notes`, `flags`, `x` | `id`, `title` | both |
 | **Destination** | `id`, `name`, `x` | `id`, `name` | trip-data |
 | **Traveler** | `id`, `name`, `type` | `id`, `name` | trip-data |
 | **Vehicle** | `model`, `batteryKWh?`, `efficiencyMilesPerKWh?`, `fullRangeMiles?`, `usableRangeMiles?`, `chargingConvention?` | `model` | trip-data |
-| **Lodging** | `id`, `location`, `checkIn`, `checkOut`, `nights?`, `area?`, `notes?`, `x` | `id`, `location` | trip-data |
+| **Lodging** | `id`, `location`, `checkIn`, `checkOut`, `nights?`, `area?`, `notes?`, `confirmation?`, `x` | `id`, `location` | trip-data |
 | **Reservation** | `id`, `what`, `when?`, `duration?`, `cost?`, `howToBook?`, `bookBy?`, `priority?`, `done?`, `x` | `id`, `what` | trip-data |
 | **NoReservation** | `id`, `what`, `notes?`, `x` | `id`, `what` | trip-data |
 | **PreTripAction** | `id`, `text`, `category`, `priority`, `done?`, `x` | `id`, `text` | trip-data |
 | **BucketItem** | `id`, `name`, `date?`, `dateLabel?`, `x` | `id`, `name` | trip-data |
-| **ChargingNetwork** | `id`, `name`, `location`, `network`, `nacsAdapter?`, `x` | `id`, `name` | trip-data |
+| **ChargingNetwork** | `id`, `name`, `location`, `network`, `nacsAdapter?`, `notes?`, `x` | `id`, `name` | trip-data |
 | **MinSocThreshold** | `id`, `day`, `leg`, `minSoc`, `reason`, `severity?`, `x` | `id`, `minSoc` | trip-data |
 | **Location** (POI) | `id`, `name`, `icon?`, `summary?`, `lodging?`, `charging[]`, `dining[]`, `activities[]`, `x` | `id`, `name` | trip-data |
 | **Contact** | `id`, `what`, `how`, `x` | `id`, `how` | trip-data |
@@ -71,6 +71,13 @@ satisfied by **synthesis at export** (§7), and every synthesized value is discl
 `KeyTip` is deliberately identity-free because `trip-data.json` defines it as a `string[]`; giving it
 an id would change the round-trip on a format that has none. It is the one entity where the canonical
 model follows the wire, and the exception is recorded here rather than silently made.
+
+**Every field in this table is a field the wire names.** `trip-data.json` is written from a closed
+list (`TRIP_KEYS` / `DAY_KEYS` / `ITEM_KEYS` / `COLLECTION_KEYS`), so a canonical field that list omits
+is one a panel can write, the model can hold, and the exporter silently destroys. `confirmation` on a
+lodging stay, `notes` on a charging network and `link` on an item were three of them; two panels were
+also writing names the wire never uses (`chargingNetworks[].adapter` for `nacsAdapter`, and
+`expenses[].item` for `label`). `ADR-0022` records the class and the guard against a sixth.
 
 ### 2.2 Fields the model adds beyond either format
 

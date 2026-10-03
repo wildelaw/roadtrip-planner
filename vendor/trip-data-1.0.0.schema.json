@@ -131,6 +131,7 @@
         "currency": { "$ref": "#/$defs/text" },
         "durationMin": { "type": "number" },
         "confirmation": { "$ref": "#/$defs/text" },
+        "link": { "$ref": "#/$defs/text" },
         "notes": { "$ref": "#/$defs/text" },
         "desc": { "$ref": "#/$defs/text" },
         "flags": { "type": "object" },
@@ -159,6 +160,7 @@
         "id": { "$ref": "#/$defs/id" }, "location": { "$ref": "#/$defs/text" },
         "checkIn": { "$ref": "#/$defs/text" }, "checkOut": { "$ref": "#/$defs/text" },
         "area": { "$ref": "#/$defs/text" }, "notes": { "$ref": "#/$defs/text" },
+        "confirmation": { "$ref": "#/$defs/text" },
         "x": { "$ref": "#/$defs/x" }
       }
     },
@@ -200,7 +202,8 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" }, "name": { "$ref": "#/$defs/text" },
         "location": { "$ref": "#/$defs/text" }, "network": { "$ref": "#/$defs/text" },
-        "nacsAdapter": { "type": "boolean" }, "x": { "$ref": "#/$defs/x" }
+        "nacsAdapter": { "type": "boolean" }, "notes": { "$ref": "#/$defs/text" },
+        "x": { "$ref": "#/$defs/x" }
       }
     },
     "minSocThreshold": {

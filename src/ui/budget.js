@@ -154,7 +154,7 @@ TP.ui.budget = (function () {
         r().el('tbody', {}, sorted.map(function (row) {
           return r().el('tr', {}, [
             r().el('td', {}, [cellInput('expenses', row.id, 'date', row.date, 'date')]),
-            r().el('td', {}, [cellInput('expenses', row.id, 'item', row.item, 'text')]),
+            r().el('td', {}, [cellInput('expenses', row.id, 'label', row.label, 'text')]),
             r().el('td', {}, [cellInput('expenses', row.id, 'category', row.category, 'text')]),
             r().el('td', {}, [cellInput('expenses', row.id, 'amount', row.amount, 'number')]),
             r().el('td', {}, [
@@ -267,10 +267,13 @@ TP.ui.budget = (function () {
   }
 
   function editExpense(id) {
-    var existing = id ? TP.model.findIn(TP.store.trip().expenses, id) : { date: TP.dates.todayISO(), item: '', category: '', amount: null };
+    var existing = id ? TP.model.findIn(TP.store.trip().expenses, id) : { date: TP.dates.todayISO(), label: '', category: '', amount: null };
     var fields = {
       date: r().el('input', { class: 'input', type: 'date', value: existing.date || TP.dates.todayISO() }),
-      item: r().el('input', { class: 'input', type: 'text', value: existing.item || '' }),
+      // The field is `label`: that is what the wire carries and what `03-data-model.md` §2.1 calls it.
+      // This form said `item`, so the exporter dropped what a person typed and wrote `label: ''`, and
+      // an expense imported from a file showed a blank Item cell for the same reason.
+      label: r().el('input', { class: 'input', type: 'text', value: existing.label || '' }),
       category: r().el('input', { class: 'input', type: 'text', value: existing.category || '', attrs: { placeholder: 'General' } }),
       amount: r().el('input', { class: 'input', type: 'number', value: existing.amount == null ? '' : existing.amount, attrs: { step: 'any' } }),
     };
@@ -283,7 +286,7 @@ TP.ui.budget = (function () {
           r().el('div', { class: 'field' }, [r().el('label', { text: 'When' }), fields.date]),
           r().el('div', { class: 'field' }, [r().el('label', { text: 'Amount' }), fields.amount]),
         ]),
-        r().el('div', { class: 'field' }, [r().el('label', { text: 'Item' }), fields.item]),
+        r().el('div', { class: 'field' }, [r().el('label', { text: 'Item' }), fields.label]),
         r().el('div', { class: 'field' }, [
           r().el('label', { text: 'Category' }), fields.category,
           r().el('div', { class: 'subtle', text: 'Left blank, this is recorded as General — the same default the export uses.' }),
@@ -302,7 +305,7 @@ TP.ui.budget = (function () {
             trip.expenses.push({
               id: TP.uid(),
               date: fields.date.value || TP.dates.todayISO(),
-              item: fields.item.value.trim(),
+              label: fields.label.value.trim(),
               category: fields.category.value.trim() || 'General',
               amount: amount,
             });

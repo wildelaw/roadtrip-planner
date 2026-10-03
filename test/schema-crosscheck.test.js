@@ -251,6 +251,12 @@ function malformedCorpus() {
     { why: 'a checklist category is not a list', value: { trip: { title: 'x' }, checklists: { Packing: 'Passport' } } },
     { why: 'cost is a list', value: { trip: { title: 'x' }, days: [{ items: [{ activity: 'x', cost: [1] }] }] } },
     { why: 'durationMin is a string', value: { trip: { title: 'x' }, days: [{ items: [{ activity: 'x', durationMin: '90' }] }] } },
+    // The fields this generation named. Until they were in the schema they were unknown properties,
+    // which it accepts by design, so a value of any TYPE at all was fine — and these are the cases
+    // that say the schema now has an opinion about them and the hand-written validator agrees.
+    { why: 'a lodging confirmation is a number', value: { trip: { title: 'x' }, lodging: [{ location: 'x', confirmation: 42 }] } },
+    { why: 'an item link is a number', value: { trip: { title: 'x' }, days: [{ items: [{ activity: 'x', link: 42 }] }] } },
+    { why: 'a charging network note is a list', value: { trip: { title: 'x' }, chargingNetworks: [{ name: 'x', notes: ['a'] }] } },
     { why: 'keyTips holds a number', value: { trip: { title: 'x' }, keyTips: [5] } },
     { why: 'nacsAdapter is a string', value: { trip: { title: 'x' }, chargingNetworks: [{ name: 'x', nacsAdapter: 'yes' }] } },
     { why: 'an expense amount is a list', value: { trip: { title: 'x' }, expenses: [{ amount: [] }] } },

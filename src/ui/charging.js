@@ -98,12 +98,16 @@ TP.ui.charging = (function () {
       title: 'Charging networks',
       editLabel: 'Change charging networks',
       empty: 'Networks you expect to use, and where. Note which ones need an adapter.',
-      blank: function () { return { id: TP.uid(), name: '', location: '', network: '', adapter: '' }; },
+      // The field is `nacsAdapter`, which is the name the wire carries and the name
+      // `03-data-model.md` §2.1 gives it. This column said `adapter`, which the wire does not name —
+      // so the checkbox wrote a key the exporter dropped, and "Adapter needed" has never survived a
+      // save in any version of this app.
+      blank: function () { return { id: TP.uid(), name: '', location: '', network: '' }; },
       columns: [
         { key: 'name', label: 'Name', placeholder: 'Supercharger — Barstow' },
         { key: 'location', label: 'Where' },
         { key: 'network', label: 'Network', placeholder: 'Tesla, Electrify America' },
-        { key: 'adapter', label: 'Adapter needed', type: 'checkbox' },
+        { key: 'nacsAdapter', label: 'Adapter needed', type: 'checkbox' },
         { key: 'notes', label: 'Notes' },
       ],
     }).card;
