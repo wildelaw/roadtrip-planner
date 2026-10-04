@@ -142,6 +142,11 @@
 
   <div class="modal-host" id="modal-host" hidden></div>
 
+  <!-- The clean page "Print this trip" fills and prints. Hidden on screen by the stylesheet; the
+       `hidden` attribute is deliberately NOT used, because [hidden] wins with !important and the
+       print rule could not then show it. -->
+  <div id="print-host"></div>
+
   <!-- 4. The container: payload + history + build metadata. Inert data (REQ-104, REQ-209). -->
   <script type="application/json" id="app-data">{{escapedJSON}}</script>
 
