@@ -151,10 +151,32 @@ TP.io.export = (function () {
     };
   }
 
+  // The printable plan. Not an interchange format: it is a one-way rendering of the model for
+  // paper, so it has no round-trip and no self-checks — only a declared disclosure of the
+  // machine-only metadata it does not carry (specs/06-interchange.md §3.4's habit).
+  function markdown(trip) {
+    var out;
+    try {
+      out = TP.markdown.fromTrip(trip);
+    } catch (e) {
+      return { ok: false, reason: 'The printable document could not be produced: ' + (e && e.message ? e.message : e) };
+    }
+    return {
+      ok: true,
+      checks: [],
+      text: out.text,
+      mime: 'text/markdown',
+      filename: filenameFor(TP.model.tripTitle(trip) || 'trip', 'md'),
+      losses: out.losses && out.losses.length ? out.losses : TP.markdown.losses(),
+    };
+  }
+
   // What a format cannot carry, phrased for the confirmation dialog. The list is the same data
   // the mappers were written against, so the two cannot drift apart (REQ-512).
   function disclosures(format) {
-    var losses = format === 'ical' ? TP.ical.losses() : format === 'tripdata' ? TP.tripdatajson.losses() : [];
+    var losses = format === 'ical' ? TP.ical.losses()
+      : format === 'tripdata' ? TP.tripdatajson.losses()
+        : format === 'markdown' ? TP.markdown.losses() : [];
     if (!losses.length) return { items: [], text: '' };
     return {
       items: losses,
@@ -259,6 +281,7 @@ TP.io.export = (function () {
     artifact: artifact,
     tripData: tripData,
     ical: ical,
+    markdown: markdown,
     disclosures: disclosures,
     filenameFor: filenameFor,
     download: download,

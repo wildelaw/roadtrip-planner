@@ -157,6 +157,10 @@ TP.ui.tripEditor = (function () {
       r().el('div', { class: 'card__head' }, [
         r().el('h2', { text: TP.model.tripTitle(trip) }),
         r().el('span', { class: 'subtle', text: dateRange(trip) }),
+        r().button('Print this trip', function () { TP.ui.printDocument(); }, {
+          class: 'btn btn--sm ml-auto',
+          attrs: { title: 'Print a clean copy of this trip' },
+        }),
       ]),
       trip.subtitle ? r().el('p', { class: 'subtle mb0', text: trip.subtitle }) : null,
       r().el('div', { class: 'row mt' }, [
@@ -190,6 +194,7 @@ TP.ui.tripEditor = (function () {
     { id: 'artifact', label: 'Planner document (.html)', note: 'The whole thing: your trip, its history, and the program. Open it later, on any machine, and everything is there.' },
     { id: 'tripdata', label: 'Trip data (.json)', note: 'Your trip as plain data, for another program or a backup you can read.' },
     { id: 'ical', label: 'Calendar (.ics)', note: 'Your itinerary as calendar events.' },
+    { id: 'markdown', label: 'Markdown (.md)', note: 'Your whole trip as a plain-text document for printing or the road — itinerary, lodging, bookings, contacts, checklists and budget.' },
   ];
 
   function exportDialog() {
@@ -232,6 +237,9 @@ TP.ui.tripEditor = (function () {
     var trip = TP.store.trip();
     if (format === 'tripdata') return TP.io.export.tripData(trip);
     if (format === 'ical') return TP.io.export.ical(trip);
+    // Markdown reads the working copy, so it needs no "save before export" commit — nothing about
+    // it depends on the container, unlike the artifact below.
+    if (format === 'markdown') return TP.io.export.markdown(trip);
 
     // The container that is written must be the one the app holds, with the working copy
     // recorded at head if there are uncommitted edits — otherwise Export would quietly drop
