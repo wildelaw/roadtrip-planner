@@ -113,6 +113,7 @@ The file, its order, and how it is produced. `PATTERN.md` §4.1, §5.11.
 | `REQ-410` | AI conversations are **app-local and excluded from the container**. Per-user state is not a property of a portable document. | §5.2 | `review` |
 | `REQ-411` | A one-time migration imports existing IndexedDB trips as documents, **in served mode only**, and fails with an explanation rather than a blank page when IndexedDB is unreachable. | `PAT-INV-02`, `PAT-INV-05` | `manual` |
 | `REQ-412` | The cloud API key is never persisted when running from `file://`, because the AI subsystem is unavailable there. | §5.9, `ADR-0015` | `unit` |
+| `REQ-413` | Clearing a document's chat deletes **that document's** stored conversations (`tp.app.conv.<id>`), scoped so other documents are untouched, and is a clean no-op with storage absent or read-only; the action is confirmed before it is taken. | `PAT-INV-02`, `PAT-INV-05` | `unit` |
 
 ## 5. Interchange — `REQ-5xx`
 

@@ -1,6 +1,6 @@
 # 05 — Storage
 
-Implements `REQ-401`–`REQ-412`, `PAT-INV-01`, `PAT-INV-02`, `PAT-INV-12`, `PAT-INV-13`.
+Implements `REQ-401`–`REQ-413`, `PAT-INV-01`, `PAT-INV-02`, `PAT-INV-12`, `PAT-INV-13`.
 
 ---
 
@@ -218,6 +218,14 @@ they **never enter the container**:
 Two independent reasons reach the same conclusion, which is a good sign the conclusion is right. The
 storage key prefix `tp.app.` distinguishes app-local state from document state (`tp.doc.`) at a glance,
 so a future contributor cannot easily put the wrong thing in the container.
+
+**Deleting conversations.** The AI panel's clear-chat action (`REQ-413`) removes every
+`tp.app.conv.<id>` whose `tripId` is the current document, and no other document's — the same scope
+`listConversations` applies, and `deleteConversations` refuses a falsy `tripId` outright so a missing
+document id cannot become a browser-wide wipe. It empties the on-screen transcript at the same time,
+and it is confirmed first, because the screen is not the only copy and the deletion cannot be undone
+from the app. With storage absent or read-only the transcript still clears and nothing is reported as
+deleted: an empty result is a correct outcome, not an error (`PAT-INV-02`).
 
 ---
 

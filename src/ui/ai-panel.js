@@ -55,6 +55,9 @@ TP.ui.aiPanel = (function () {
       r().el('div', { class: 'ai__head' }, [
         planBtn,
         r().button('View itinerary', function () { TP.ui.shell.setTab('itinerary'); }, { class: 'btn' }),
+        r().button('Clear chat', function () { clearChat(docId); },
+          { class: 'btn btn--sm btn--danger', disabled: busy,
+            attrs: { title: 'Delete this document’s stored conversations in this browser' } }),
         r().el('span', { class: 'subtle ml-auto', text: TP.ai.transport.modeLabel(cfg) }),
       ]),
       r().el('div', { class: 'ai__note' }, [
@@ -186,6 +189,39 @@ TP.ui.aiPanel = (function () {
       roleRow('Agent', m.content),
       r().el('div', { class: 'bubble' }, [r().markdown(m.content || '')]),
     ]);
+  }
+
+  // ---- Clearing ----
+
+  // REQ-413. Empties the on-screen transcript AND deletes this document's stored conversations, so
+  // the clear survives a reload and gives the space back. Only this document: the registry scopes by
+  // `tripId`, so another trip's conversations are untouched. Confirmed first because it is not
+  // recoverable from here — this is app-local state, and the file on disk never held it.
+  //
+  // Guarded as well as disabled while a run is in progress: clearing a transcript the loop is still
+  // writing to would drop the run's own messages.
+  function clearChat(docId) {
+    if (running) return null;
+    return TP.ui.modal.confirm({
+      title: 'Clear this chat?',
+      body: r().el('div', { class: 'info info--danger' }, [
+        r().el('strong', { text: 'This clears the conversation, and it cannot be undone.' }),
+        r().el('div', { text: 'The messages shown here and this document’s saved conversations in this browser are removed. Other documents are untouched, and your trip is not affected.' }),
+      ]),
+      confirmLabel: 'Clear it',
+      danger: true,
+    }).then(function (yes) {
+      if (!yes) return null;
+      // Empty in memory explicitly: `[]` is truthy, so `seed` short-circuits and cannot re-read
+      // storage — the panel is blank even if the delete below could not reach it.
+      transcripts[docId] = [];
+      var removed = TP.ai.agent.deleteConversationsFor(docId);
+      TP.ui.toast.info(removed > 0
+        ? 'Chat cleared. ' + removed + (removed === 1 ? ' conversation was' : ' conversations were') + ' removed from this browser.'
+        : 'Chat cleared.');
+      TP.ui.shell.renderActive();
+      return removed;
+    });
   }
 
   // ---- Running ----

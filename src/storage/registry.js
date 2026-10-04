@@ -212,6 +212,22 @@ TP.registry = (function () {
     return out;
   }
 
+  // Deleting a document's conversations (REQ-413). Scoped by `tripId` exactly as
+  // `listConversations` is, so one document's clear cannot touch another's. A falsy `tripId`
+  // deletes NOTHING rather than everything — "all" is not a thing this call means, and the
+  // difference matters because a missing document id must not become a browser-wide wipe. Storage
+  // absent or read-only is a clean zero (PAT-INV-02), not an exception the caller must catch.
+  function deleteConversations(adapter, tripId) {
+    if (!adapter || !adapter.available() || !tripId) return 0;
+    var keys = adapter.keys(TP.storage.CONV_PREFIX);
+    var removed = 0;
+    for (var i = 0; i < keys.length; i++) {
+      var c = adapter.get(keys[i]);
+      if (c && c.tripId === tripId) { adapter.del(keys[i]); removed++; }
+    }
+    return removed;
+  }
+
   // ---- Migration from IndexedDB (§8, REQ-411) ----
   //
   // Served mode only: IndexedDB is blocked on some file:// origins, and a migration that
@@ -318,6 +334,7 @@ TP.registry = (function () {
     bytesFor: bytesFor,
     saveConversation: saveConversation,
     listConversations: listConversations,
+    deleteConversations: deleteConversations,
     idbAvailable: idbAvailable,
     migrateFromIndexedDB: migrateFromIndexedDB,
     buildDocumentFromLegacyTrip: buildDocumentFromLegacyTrip,
