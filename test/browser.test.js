@@ -559,6 +559,102 @@ module.exports = {
     },
 
     {
+      // REQ-413. The panel's transcript is re-seeded from the last stored conversation on every open,
+      // and every run writes a conversation that was never deleted, so both grew without bound. The
+      // Clear chat control is the way out. What is asserted is the scope: only the open document's
+      // conversations go, another document's survive, the trip is untouched, and the clear survives a
+      // reload because the localStorage keys are actually gone.
+      name: 'Clear chat empties the transcript and removes only this document’s stored conversations (REQ-413)',
+      run: async function () {
+        var server = await browser.serve();
+        var page = await browser.visit({ origin: server.origin });
+        try {
+          var out = await page.evaluate(async function () {
+            var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+            // The panel computes the key's `tripId` this way (`docIdOf(...) || 'unsaved'`), and it
+            // filters conversations by it — the same trap the copy test documents at :456-462.
+            var docId = TP.store.docIdOf(TP.store.container()) || 'unsaved';
+            var mine = [
+              { id: 'clear-1', tripId: docId, createdAt: 1, messages: [{ role: 'user', content: 'Plan it.' }] },
+              { id: 'clear-2', tripId: docId, createdAt: 2, messages: [
+                { role: 'user', content: 'Day two, please.' },
+                { role: 'assistant', content: 'Here is **day two**.' },
+              ] },
+            ];
+            mine.forEach(function (c) { localStorage.setItem('tp.app.conv.' + c.id, JSON.stringify(c)); });
+            // A conversation for a DIFFERENT document. It must survive, or the control is a wipe.
+            localStorage.setItem('tp.app.conv.other-1', JSON.stringify({
+              id: 'other-1', tripId: 'another-document', createdAt: 1,
+              messages: [{ role: 'user', content: 'Not this one.' }],
+            }));
+
+            var titleBefore = TP.model.tripTitle(TP.store.trip());
+
+            document.querySelector('#tabs button[data-tab="ai"]').click();
+            await sleep(150);
+            var rowsBefore = document.querySelectorAll('#ai-transcript .msg').length;
+
+            function headButton(re) {
+              return Array.prototype.filter.call(
+                document.querySelectorAll('.ai__head button'),
+                function (b) { return re.test(b.textContent.trim()); })[0] || null;
+            }
+            function modalButton(re) {
+              return Array.prototype.filter.call(
+                document.querySelectorAll('.modal button'),
+                function (b) { return re.test(b.textContent.trim()); })[0] || null;
+            }
+
+            var clearBtn = headButton(/^clear chat$/i);
+            var enabled = clearBtn ? !clearBtn.disabled : null;
+            if (clearBtn) clearBtn.click();
+            await sleep(80);
+            var dialog = document.querySelector('.modal');
+            var dialogTitle = dialog ? dialog.querySelector('h3').textContent : null;
+
+            var go = modalButton(/^clear it$/i);
+            if (go) go.click();
+            await sleep(120);
+
+            var keys = Object.keys(localStorage);
+            return {
+              docId: docId,
+              rowsBefore: rowsBefore,
+              clearBtn: !!clearBtn,
+              enabled: enabled,
+              dialogTitle: dialogTitle,
+              confirmLabel: go ? go.textContent.trim() : null,
+              rowsAfter: document.querySelectorAll('#ai-transcript .msg').length,
+              empty: !!document.querySelector('#ai-transcript .empty'),
+              toast: document.getElementById('toasts').textContent,
+              mineGone: keys.every(function (k) { return k.indexOf('tp.app.conv.clear-') === -1; }),
+              otherKept: keys.indexOf('tp.app.conv.other-1') !== -1,
+              titleUnchanged: TP.model.tripTitle(TP.store.trip()) === titleBefore,
+            };
+          });
+
+          h.ok(out.rowsBefore > 0, 'the seeded conversation did not render (docId ' + out.docId + ')');
+          h.ok(out.clearBtn, 'the AI panel head has no Clear chat button');
+          h.equal(out.enabled, true, 'Clear chat was disabled without a run in progress');
+          h.equal(out.dialogTitle, 'Clear this chat?', 'the clear did not ask before deleting');
+          h.equal(out.confirmLabel, 'Clear it', 'the confirmation did not name the action');
+
+          h.equal(out.rowsAfter, 0, 'the transcript still shows messages after the clear');
+          h.ok(out.empty, 'the cleared panel did not fall back to its empty state');
+          h.ok(/Chat cleared/.test(out.toast), 'the clear reported nothing to the person: ' + JSON.stringify(out.toast));
+
+          h.ok(out.mineGone, 'this document’s stored conversations were not removed, so the clear is lost on reload');
+          h.ok(out.otherKept, 'the clear removed another document’s conversation — it is not scoped');
+          h.ok(out.titleUnchanged, 'the clear changed the trip itself');
+        } finally {
+          page.close();
+          await server.close();
+        }
+      },
+    },
+
+    {
       name: 'the artifact’s own policy admits the WebGPU transport: the module host is a script source, and WASM compiles (REQ-713)',
       run: async function () {
         // The regression this exists for: the policy named the CDN only as a `connect-src`, but a

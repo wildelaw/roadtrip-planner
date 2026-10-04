@@ -881,5 +881,57 @@ module.exports = {
           'a patch was accepted for a collection the agent may not touch');
       },
     },
+
+    {
+      name: 'clearing a document deletes only its conversations, and a missing document id deletes nothing (REQ-413)',
+      run: function () {
+        var ctx = h.pure({ end: 'ai/mock.js' });
+        var TP = ctx.TP;
+        var adapter = TP.storageMemory.create();
+
+        TP.registry.saveConversation(adapter, { id: 'a1', tripId: 'doc-A', createdAt: 1, messages: [] });
+        TP.registry.saveConversation(adapter, { id: 'a2', tripId: 'doc-A', createdAt: 2, messages: [] });
+        TP.registry.saveConversation(adapter, { id: 'b1', tripId: 'doc-B', createdAt: 1, messages: [] });
+
+        h.equal(TP.registry.deleteConversations(adapter, 'doc-A'), 2,
+          'the clear did not remove both of the document’s conversations');
+        h.equal(TP.registry.listConversations(adapter, 'doc-A').length, 0, 'a conversation survived the clear');
+        h.equal(TP.registry.listConversations(adapter, 'doc-B').length, 1,
+          'the clear reached another document — this is the scope that must hold');
+
+        // The dangerous case: a missing document id must not become a browser-wide wipe.
+        h.equal(TP.registry.deleteConversations(adapter, null), 0, 'a falsy tripId deleted conversations');
+        h.equal(TP.registry.listConversations(adapter, 'doc-B').length, 1,
+          'a falsy tripId removed another document’s conversation');
+
+        // Read-only and unavailable storage are clean zeros, not throws (PAT-INV-02). The null
+        // adapter’s own `del` would throw, so this pins the guard that runs before it.
+        h.equal(TP.registry.deleteConversations(TP.storageNull.create(), 'doc-A'), 0,
+          'a null adapter threw or reported a deletion');
+      },
+    },
+
+    {
+      name: 'the panel’s clear reaches storage through the agent, and a read-only store is a clean no-op (REQ-413)',
+      run: function () {
+        var ctx = openRealm({});
+        var TP = ctx.ctx.TP;
+        var storage = TP.store.storage();
+
+        TP.registry.saveConversation(storage, { id: 'k1', tripId: ctx.docId, createdAt: 1, messages: [] });
+        TP.registry.saveConversation(storage, { id: 'k2', tripId: ctx.docId, createdAt: 2, messages: [] });
+        TP.registry.saveConversation(storage, { id: 'other', tripId: 'another-document', createdAt: 1, messages: [] });
+
+        h.equal(TP.ai.agent.deleteConversationsFor(ctx.docId), 2,
+          'the agent wrapper did not remove this document’s conversations');
+        h.equal(TP.ai.agent.conversationsFor(ctx.docId).length, 0, 'a conversation survived the clear');
+        h.equal(TP.ai.agent.conversationsFor('another-document').length, 1, 'the clear reached another document');
+
+        // Re-init over a null (read-only) adapter: `available()` is false, so the wrapper reports zero
+        // rather than throwing the adapter’s ReadOnlyError.
+        TP.store.init(TP.store.container(), TP.storageNull.create(), { readOnly: true });
+        h.equal(TP.ai.agent.deleteConversationsFor(ctx.docId), 0, 'a read-only store reported a deletion');
+      },
+    },
   ],
 };

@@ -178,8 +178,19 @@ TP.ai.agent = (function () {
     try { return TP.registry.listConversations(storage, docId); } catch (e) { return []; }
   }
 
+  // The panel's clear-chat action reaches storage through here, never directly (REQ-401). An
+  // absent, read-only, or throwing storage yields zero removed rather than an error: the on-screen
+  // transcript still clears, and nothing claims a deletion that did not happen (PAT-INV-02).
+  // Scoped to one document by `deleteConversations` (REQ-413).
+  function deleteConversationsFor(docId) {
+    var storage = TP.store.storage();
+    if (!storage || !storage.available()) return 0;
+    try { return TP.registry.deleteConversations(storage, docId); } catch (e) { return 0; }
+  }
+
   return {
     runAgent: runAgent,
     conversationsFor: conversationsFor,
+    deleteConversationsFor: deleteConversationsFor,
   };
 })();
